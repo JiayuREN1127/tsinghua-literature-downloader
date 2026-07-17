@@ -1,0 +1,10 @@
+{
+  "name": "tsinghua-literature-downloader",
+  "version": "1.0.0",
+  "description": "通过已登录的清华图书馆/WebVPN Chrome 会话下载学术 PDF",
+  "type": "module",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "license": "MIT"
+}
