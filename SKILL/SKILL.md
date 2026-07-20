@@ -49,11 +49,13 @@ Before attempting downloads, confirm these conditions:
    - Ask the user: "Install FlareSolverr now, or skip and handle Cloudflare pages manually?"
    - If they agree, install and start it:
      ```bash
-     # Clone and install
+     # Clone and install (macOS/Linux)
      git clone https://github.com/FlareSolverr/FlareSolverr.git /tmp/flaresolverr-src
      cd /tmp/flaresolverr-src && python3.12 -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
-     # Start (macOS/Linux)
+     # Start
      HEADLESS=false python3.12 src/flaresolverr.py &
+
+     # Windows: use %TEMP% instead of /tmp, python instead of python3.12
      ```
    - Verify: `curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" -d '{"cmd":"sessions.list"}'`
    - If they decline, proceed without it — Cloudflare challenges will be escalated to the user.
