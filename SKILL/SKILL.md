@@ -27,24 +27,60 @@ Before attempting downloads, confirm these conditions:
 
 1. Chrome is open on the user's machine.
 2. The user has personally logged in to Tsinghua University Library / 水木学术搜索 in Chrome.
-   - Start page: `https://tsinghua-primo.hosted.exlibrisgroup.com/primo-explore/search?vid=86THU&lang=zh_CN`
+   - Start page: `https://tsinghua-primo.hosted.exlibrisgroup.com.cn/primo-explore/search?vid=86THU&lang=zh_CN`
 3. Chrome remote debugging is allowed for the current browser instance.
    - Ask the user to open `chrome://inspect/#remote-debugging`.
    - They must enable "Allow remote debugging for this browser instance".
 4. Node.js 22+ is available.
 5. The web-access CDP proxy is available or can be started:
    ```bash
-   cd tsinghua-literature-downloader && node start.js
+   cd <skill-folder> && node start.js
    ```
 6. The user has approved the target output folder.
 
-## Status Categories
+## Operating Model
 
-Classify every paper into one of these statuses, and keep the status in the manifest:
+Use a small, traceable batch workflow:
+
+1. Normalize the paper list before opening publisher pages.
+   - Required paper information: title or DOI.
+   - Preferred paper information: title, authors, year, DOI, and expected source database if the user provides it.
+2. Create or reuse the target output folder.
+   - Default PDF folder: `downloads/`.
+   - Default log file: `download-log.tsv`.
+3. Process one paper at a time unless the user explicitly approves a small batch.
+4. Search through Tsinghua Primo / 水木学术搜索 first.
+5. Follow library `PDF`, `在线全文`, `Full Text`, or `View PDF` routes before trying direct publisher DOI templates.
+6. Stop at institutional login, CAPTCHA, Cloudflare, or publisher bot checks and ask the user to complete the step in Chrome.
+7. Save only verified PDF files. Do not mark a paper as downloaded until the local file exists and passes the verification checklist.
+
+## Simple Log
+
+Keep the log intentionally small. Use tab-separated `download-log.tsv` with exactly these fields:
 
 ```text
-downloaded
-downloaded_with_si
+paper	source_database	download_success	failure_reason
+```
+
+Field rules:
+
+1. `paper`: compact bibliographic information, preferably `title | authors | year | DOI`.
+2. `source_database`: the database or route used, such as `Primo`, `ScienceDirect`, `Wiley`, `EBSCOhost Business Source Complete`, `JSTOR`, `SAGE`, `Taylor & Francis`, `INFORMS`, `ProQuest APA PsycNET`, or `unknown`.
+3. `download_success`: `yes` or `no`.
+4. `failure_reason`: empty when successful; otherwise use a concrete reason such as `primo_no_link`, `cas_waiting_user`, `sciencedirect_robot_check`, `publisher_verification_waiting_user`, `no_authorized_pdf_found`, `purchase_required`, `failed_after_retry`, or `not_pdf_response`.
+
+Example:
+
+```text
+paper	source_database	download_success	failure_reason
+The neglected role of proactive behavior and outcomes in newcomer socialization | Saks et al. | 2011 | 10.1016/j.jvb.2010.12.007	ScienceDirect	no	sciencedirect_robot_check
+```
+
+## Failure Reasons
+
+Use these values as `failure_reason` entries in the simplified log when `download_success=no`:
+
+```text
 cas_waiting_user
 cas_resolved_retry_needed
 publisher_verification_waiting_user
@@ -58,6 +94,7 @@ no_authorized_pdf_found
 failed_after_retry
 ip_not_authorized
 purchase_required
+not_pdf_response
 ```
 
 Use `cas_waiting_user` only when the browser is visibly at Tsinghua University CAS / unified identity authentication or an equivalent institutional SSO step. Do not treat this as a final failure.
@@ -81,21 +118,21 @@ If this hangs or fails, ask the user to confirm the remote debugging checkbox.
 |----------|--------|---------|
 | `/health` | GET | Proxy health and Chrome connection status |
 | `/targets` | GET | List open Chrome tabs |
-| `/new?url=...` | GET | Create a new background tab |
-| `/navigate?target=...&url=...` | GET | Navigate an existing tab |
+| `/new` | POST body=URL | Create a new background tab |
+| `/navigate?target=...` | POST body=URL | Navigate an existing tab |
 | `/close?target=...` | GET | Close a tab |
 | `/info?target=...` | GET | Get page title, URL, and readyState |
 | `/eval?target=...` | POST body=JS | Execute JavaScript in a tab and return `{ value: ... }` |
 | `/clickAt?target=...` | POST body=CSS selector | Click the center of a visible element |
 
-Use `/navigate` rather than `/new` for Primo URLs containing `#!` fragments. If a `#!` fragment is stripped, Chrome may open `about:blank` or a wrong page.
+Use `/navigate` rather than `/new` for Primo URLs containing `#!` fragments. If a `#!` fragment is stripped, Chrome may open `about:blank` or a wrong page. For `/new` and `/navigate`, pass the target URL in the POST body rather than the query string.
 
 ## Recommended Search Workflow
 
 Prefer the library discovery route before direct publisher pages. It is more stable and less likely to trigger bot protection.
 
 1. Search by DOI or exact title in 水木学术搜索 (Primo):
-   - `https://tsinghua-primo.hosted.exlibrisgroup.com/primo-explore/search?vid=86THU&lang=zh_CN&query=any,contains,<URL-encoded DOI or title>`
+   - `https://tsinghua-primo.hosted.exlibrisgroup.com.cn/primo-explore/search?vid=86THU&lang=zh_CN&query=any,contains,<URL-encoded DOI or title>`
 2. Open Primo URLs through `/navigate` to preserve `#!` fragments.
 3. Read the result page with `/eval`.
 4. Extract links whose visible text or `aria-label` is:
@@ -109,6 +146,26 @@ Prefer the library discovery route before direct publisher pages. It is more sta
 7. If the publisher shows a security challenge, ask the user to complete it manually.
 8. Once the PDF is visible in Chrome, use `scripts/browser_pdf_downloader.mjs` to save it from the authenticated browser context.
 
+## Per-Paper Workflow
+
+For each paper:
+
+1. Identify the best query.
+   - Use DOI first when available.
+   - If DOI returns no result in Primo, retry with the complete title.
+2. Record the source database and look up its playbook.
+    - If Primo shows a vendor label or resolver route, use that vendor name.
+    - If the source is inferred from DOI or publisher page, record the inferred source but do not treat it as verified access.
+    - **Consult `lessons.md`** for the publisher-specific playbook before proceeding. Look up the section matching the publisher (see table in "Publisher-Specific Playbooks" above).
+3. Open the library route in Chrome through the CDP proxy.
+4. Classify the page state.
+   - Result with PDF/full-text link: continue.
+   - CAS/SSO: mark `cas_waiting_user` and pause for user action.
+   - CAPTCHA/Cloudflare/bot page: mark `publisher_verification_waiting_user` or `sciencedirect_robot_check`.
+   - No usable link: mark `primo_no_link` or `no_authorized_pdf_found`.
+5. Download only after a PDF page or PDF response is visible from the authenticated browser context.
+6. Verify the file and update the simplified log.
+
 ### Primo Field Notes
 
 When extracting PDF, online full text, or publisher links from Primo:
@@ -118,70 +175,51 @@ When extracting PDF, online full text, or publisher links from Primo:
 3. If Primo redirects to a login page and says the IP is outside the authorized range, record `ip_not_authorized`. The user may need the THU VPN/WebVPN client.
 4. If Primo has no PDF but has an online-full-text link, follow that route before constructing a publisher URL manually.
 
-## Publisher-Specific Patterns
+## Publisher-Specific Playbooks (from lessons.md)
 
-Use these as DOI-based repair hints only after confirming the paper identity. Do not claim access if the page or PDF is not actually verified.
+**Before attempting any download, identify the publisher/platform and consult `lessons.md` for the field-tested playbook.** The lessons file contains per-publisher workflows, URL patterns, authentication traps, and workarounds discovered through live testing. Do not guess a URL pattern when a proven one exists in the lessons.
 
-### ACS Publications
+### Publisher → Lessons Section Mapping
 
-For DOI prefix `10.1021/...`:
+Use this mapping to look up the right section in `lessons.md`:
 
-```text
-https://pubs.acs.org/doi/pdf/<doi>
-```
+| Publisher / Platform | Lessons Section | Trigger |
+|---|---|---|
+| ScienceDirect (Elsevier) | `ScienceDirect 流程总结` | DOI `10.1016/...`, Primo "阅读全文" → sciencedirect.com |
+| Wiley | `Wiley 流程总结` | DOI `10.1002/...` or `10.1111/...`, Primo → onlinelibrary.wiley.com |
+| EBSCO (any) | `EBSCO 流程总结` | Primo 无记录、EBSCO 有收录；Business Source Complete / Academic Search Ultimate |
+| ProQuest (APA) | `ProQuest 流程总结` | APA 期刊 `10.1037/...`，Primo 无记录 |
+| SAGE | `SAGE 中国镜像流程总结` | DOI `10.1177/...`；先用 `sage.cnpereading.com`，**不要用** `journals.sagepub.com` |
+| Taylor & Francis | `Taylor & Francis 流程总结` | DOI `10.1080/...` |
+| JSTOR | `JSTOR 流程总结` | DOI `10.2307/...`，Primo → jstor.org |
+| INFORMS | `EBSCO 流程总结` | DOI `10.1287/...`，走 EBSCO Business Source Complete |
 
-ACS supporting information often follows:
-```text
-https://pubs.acs.org/doi/suppl/<doi>/suppl_file/<journal-code>_si_001.pdf
-```
+Also consult the `全局关键经验` section in lessons.md for:
+- Primo (水木搜索) URL migration and scope switching
+- CAS session sharing across publishers
+- PDF chunk-transfer pattern for large files
 
-### Wiley
+### How to Use Lessons
 
-For DOI prefixes such as `10.1002/...` or `10.1111/...`, first navigate to the authenticated Wiley article page, then fetch from that page's own origin:
+1. **Match the DOI prefix to a publisher**, or check Primo's result to identify the database.
+2. **Read the corresponding section in `lessons.md`** before making any request.
+3. **Follow the "标准步骤" table** as the primary path.
+4. **Read the "关键教训"** to avoid known traps (wrong URL, wrong auth mode, wrong domain).
+5. **Fallback**: If the playbook fails, note the deviation in `download-log.tsv` and update lessons.md after resolving.
 
-```text
-<location.origin>/doi/pdfdirect/<doi>?download=true
-```
+### DOI-Based URL Repair Hints (use only after checking lessons.md)
 
-Do not hardcode `onlinelibrary.wiley.com`: Primo may authenticate through a subdomain, and cross-origin fetches can fail.
+These patterns are quick reminders. Do not apply them without reading the lessons playbook first.
 
-### Springer Nature
-
-For DOI prefixes such as `10.1007/...` and `10.1186/...`:
-
-```text
-https://link.springer.com/content/pdf/<doi>.pdf
-```
-
-### Nature Communications
-
-For OA DOI patterns such as `10.1038/s41467-...`:
-
-```text
-https://www.nature.com/articles/<article-id>.pdf
-```
-
-Extract `<article-id>` from the DOI suffix.
-
-### bioRxiv
-
-For DOI prefix `10.1101/...`:
-
-```text
-https://www.biorxiv.org/content/<doi>v1.full.pdf
-```
-
-### Frontiers
-
-For DOI prefix `10.3389/...`:
-
-```text
-https://www.frontiersin.org/articles/<doi>/pdf
-```
-
-### RSC Publishing
-
-For DOI prefix `10.1039/...`, do not assume THU has authorized full-text access. If PDF links return 404 or purchase pages, inspect the article page and record `no_authorized_pdf_found` or `purchase_required`.
+| Publisher | PDF URL Pattern |
+|---|---|
+| ACS | `https://pubs.acs.org/doi/pdf/<doi>` |
+| Wiley | `<location.origin>/doi/pdfdirect/<doi>?download=true` |
+| Springer | `https://link.springer.com/content/pdf/<doi>.pdf` |
+| Nature OA | `https://www.nature.com/articles/<id>.pdf` |
+| bioRxiv | `https://www.biorxiv.org/content/<doi>v1.full.pdf` |
+| Frontiers | `https://www.frontiersin.org/articles/<doi>/pdf` |
+| RSC | No guaranteed access; check page first |
 
 ## Publisher Verification and ScienceDirect
 
@@ -191,7 +229,7 @@ Reduce the chance of triggering them by using a conservative access pattern:
 
 1. Prefer 水木学术搜索 / WebVPN / library `在线全文` links before direct `doi.org -> publisher` navigation.
 2. Process ScienceDirect and other sensitive publishers one article at a time.
-3. Keep a visible audit trail in the manifest; do not open many publisher tabs in parallel.
+3. Keep a visible audit trail in `download-log.tsv`; do not open many publisher tabs in parallel.
 4. Wait for each page to settle before looking for `Download PDF`, `View PDF`, or `PDF`.
 5. Reuse the same tab after the user completes a verification step instead of opening repeated new tabs.
 6. Avoid retry loops. One failed automatic attempt is enough before handing the page to the user.
@@ -199,7 +237,7 @@ Reduce the chance of triggering them by using a conservative access pattern:
 When a publisher verification page appears:
 
 1. Stop automated actions on that tab.
-2. Record the paper in the manifest with status `publisher_verification_waiting_user`; use `sciencedirect_robot_check` for ScienceDirect's "Are you a robot?" page.
+2. Record the paper in `download-log.tsv` with `download_success=no` and `failure_reason=publisher_verification_waiting_user`; use `sciencedirect_robot_check` for ScienceDirect's "Are you a robot?" page.
 3. Tell the user which paper and tab need manual attention.
 4. Do not click CAPTCHA, Cloudflare, "Are you a robot?", bot-check, or similar challenge controls automatically.
 5. After the user says the verification is complete, continue from the same tab and try the visible article/PDF route once.
@@ -228,14 +266,14 @@ Some publishers, especially Elsevier/ScienceDirect, Springer Nature, Nature Port
 When a paper reaches a CAS or institutional SSO page:
 
 1. Stop automated actions on that tab.
-2. Record the paper with status `cas_waiting_user`.
+2. Record the paper in `download-log.tsv` with `download_success=no` and `failure_reason=cas_waiting_user`.
 3. Tell the user exactly which tab/page needs attention, for example: "This paper is at THU CAS. If Chrome has already filled the account and password, I can click the login/confirm button once with your authorization; otherwise please complete it in Chrome."
 4. Do not read, store, or request the password, QR result, OTP, SMS code, CAPTCHA, cookie, or local/session storage.
 5. If the user explicitly authorizes clicking because the CAS credentials are already filled in Chrome, click only the visible THU CAS/WebVPN/institutional SSO login/confirm button once. Do not type into fields or inspect hidden credential values.
 6. If QR login, SMS/OTP, CAPTCHA, Cloudflare, or publisher bot verification appears, stop and let the user complete it manually.
 7. After the login/confirm step completes, refresh or continue from the same tab.
 8. Re-detect whether the page is now a publisher article page, a PDF viewer, or another institutional handoff.
-9. If resolved, download and verify the PDF/SI, then update the manifest status to `downloaded` or `downloaded_with_si`.
+9. If resolved, download and verify the PDF, then update `download-log.tsv` with `download_success=yes`.
 10. If it loops back to CAS after a completed user login, record `failed_after_retry` with the observed reason and move on.
 
 ## Download PDF From Browser Context
@@ -304,7 +342,7 @@ Minimum verification checklist:
 - First bytes are `%PDF` for PDF files.
 - Page count is nonzero.
 - Extracted text includes the article title, abstract, or supporting information title.
-- Save a small manifest with DOI, title, source URL, and download date.
+- Update `download-log.tsv` with paper information, source database, success flag, and failure reason.
 
 ## Failure Handling
 

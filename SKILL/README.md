@@ -10,7 +10,7 @@
 
 ```bash
 # 1. 解压包，进入目录
-cd tsinghua-literature-downloader
+cd <skill-folder>
 
 # 2. 一键启动（检查环境 + 启动 CDP 代理）
 node start.js
@@ -87,8 +87,8 @@ python3 scripts/extract_pdf_text.py \
 `download-log.tsv`，tab 分隔：
 
 ```text
-date	doi	title	file	status
-2026-07-17	10.1016/j.jvb.2006.12.004	Socialization tactics and newcomer adjustment...	downloads/Saks_2007_JVB_socialization-tactics.pdf	downloaded
+paper	source_database	download_success	failure_reason
+Socialization tactics and newcomer adjustment | ScienceDirect | 10.1016/j.jvb.2006.12.004	ScienceDirect	yes	
 ```
 
 ## 文件验证

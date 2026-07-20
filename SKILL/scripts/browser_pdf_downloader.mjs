@@ -101,12 +101,25 @@ async function main() {
   let openedByScript = false;
 
   if (!target) {
-    const created = await proxyGet(args.proxy, "/new", { url: args.url }, 60000);
+    const newUrl = args.proxy + "/new";
+    const response = await fetch(newUrl, {
+      method: "POST",
+      body: args.url,
+      signal: AbortSignal.timeout(60000),
+    });
+    const created = await response.json();
+    if (!response.ok) throw new Error(`POST /new failed: ${JSON.stringify(created)}`);
     target = created.targetId;
     openedByScript = true;
     await waitForComplete(args.proxy, target);
   } else if (args.url) {
-    await proxyGet(args.proxy, "/navigate", { target, url: args.url }, 60000);
+    const navUrl = args.proxy + "/navigate?target=" + target;
+    const navResp = await fetch(navUrl, {
+      method: "POST",
+      body: args.url,
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!navResp.ok) throw new Error(`POST /navigate failed: ${await navResp.text()}`);
     await waitForComplete(args.proxy, target);
   }
 
