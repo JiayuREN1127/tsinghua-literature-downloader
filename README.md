@@ -2,7 +2,7 @@
 
 通过已登录的清华图书馆/WebVPN Chrome 会话自动化下载学术 PDF。
 
-Adapted from the [ZJU Literature Downloader](https://github.com/zju-literature-downloader) (浙江大学版), re-engineered for Tsinghua University Library, 水木学术搜索, and institutional access pathways.
+Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader) by [@baihe26](https://github.com/baihe26) (浙江大学版), re-engineered for Tsinghua University Library, 水木学术搜索, and institutional access pathways.
 
 ## 工作流
 
