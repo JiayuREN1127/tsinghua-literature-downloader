@@ -10,6 +10,7 @@
 - **标签页管理**：过期/损坏的标签页应及时关闭
 - **下载日志**：用 `download-log.tsv` 记录每次操作结果
 - **CDP 操作技巧**：Primo 使用 `/navigate` 而非 `/new`（防止 `#!` fragment 被截断 → `about:blank`）；SPA 页面导航后等待 6-10 秒再提取链接
+- **Cloudflare JS Challenge 处理**：发行商页面触发 Cloudflare 后，以两个模式依次尝试 FlareSolverr 解析（见下方 `FlareSolverr 两模式工作流`）
 
 ### 论文入口：分层回退策略
 
@@ -22,6 +23,52 @@
 | 3 | **出版社直连** | Primo/Alma 均无记录时使用（如 EBSCO 中收录的 INFORMS 期刊、部分 Wiley 文章）。注意：直接 DOI 跳转出版社页面是裸访，可能需要逐家适配 Shibboleth/CAS 流程。 |
 
 **核心原则**：优先经过机构的认证上下文（Alma 或 Primo 的"在线全文"链接嵌入了 Tsinghua 代理/认证信息），减少逐家适配 Shibboleth 的成本。但如果出版社已有缓存的 CAS session，直连也可能直接认证通过。
+
+---
+
+## FlareSolverr 两模式工作流
+
+当出版商页面（ScienceDirect、Taylor & Francis、SAGE 镜像等）显示 Cloudflare JS Challenge 时，使用 FlareSolverr (`localhost:8191`) 解析。两个模式依次尝试：
+
+### 检测：区分 JS Challenge 与 CAPTCHA
+
+- **JS Challenge**（可自动解析）：页面文字含 "Checking your browser" / "正在检查浏览器" / "Just a moment"
+- **CAPTCHA**（不能自动解析）：页面含 "Verify you are human" / 复选框 / 图片网格 / "Are you a robot?"
+
+FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 CAPTCHA 时不调用 FlareSolverr，直接交付用户手动验证。
+
+### 模式 A：Cookie 注入（优先）
+
+1. 将被阻塞的 URL 发给 FlareSolverr：
+   ```
+   POST http://localhost:8191/v1
+   { "cmd": "request.get", "url": "<blockedURL>", "maxTimeout": 60000, "returnOnlyCookies": true }
+   ```
+2. 返回 `{ solution: { cookies: [...] } }`，其中包含 `cf_clearance` 等 cookie。
+3. 通过 CDP 将 cookie 注入被阻塞的 Chrome tab：
+   ```javascript
+   document.cookie = "<name>=<value>; domain=<domain>; path=/; secure";
+   ```
+4. 刷新标签页。Chrome 现在的 `cf_clearance`（绕过 Cloudflare）+ Tsinghua CAS cookies（机构认证）同时存在。
+
+**风险**：`cf_clearance` 偶与 User-Agent 绑定。FlareSolverr 的 headless Chrome UA 与用户的真实 Chrome UA 不匹配时，Cloudflare 可能拒绝该 cookie。测试确认后，若 UA 绑定为严格布尔的，退至模式 B。
+
+### 模式 B：内容提取（回退）
+
+1. 前述 FlareSolverr 请求不带 `returnOnlyCookies`，获取完整 HTML（`solution.response`）。
+2. 从 HTML 中提取目标链接：
+   - ScienceDirect：文章 PII 匹配的 "View PDF" 链接，或 `pdf.sciencedirectassets.com` 签名 URL
+   - Taylor & Francis：`/doi/pdf/<DOI>?download=true`
+   - SAGE：`/storage/sage/journal/article/.../unzip/<DOI>.pdf`
+3. 用户的 Chrome 直接导航至提取的链接。PDF CDN（`pdf.sciencedirectassets.com`、`sage.cnpereading.com`）很少受 Cloudflare 保护。
+4. 若 PDF CDN 也触发 Cloudflare，记录 `cloudflare_flaresolverr_failed`，交付用户手动操作。
+
+### 日志
+
+两种新的 `failure_reason` 值：
+
+- `cloudflare_flaresolverr_solved` — 模式 A 或 B 成功
+- `cloudflare_flaresolverr_failed` — 两模式均失败，交付用户
 
 ---
 

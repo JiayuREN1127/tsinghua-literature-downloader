@@ -11,7 +11,9 @@ This skill turns the verified workflow into a repeatable, legally scoped process
 
 ## Boundaries
 
-Use only the user's legitimate institutional access. Do not bypass paywalls, DRM, CAPTCHA, Cloudflare, publisher bot checks, or two-factor authentication. If a page asks for CAPTCHA, QR login, SMS/OTP, Cloudflare, publisher bot checks, or a security challenge, stop and ask the user to complete it in Chrome.
+Use only the user's legitimate institutional access. Do not bypass paywalls, DRM, CAPTCHA, two-factor authentication, or publisher login gates.
+
+Cloudflare JS Challenge ("Checking your browser...") is an automated browser test, not a human verification. FlareSolverr may be used to resolve it programmatically. Cloudflare Turnstile (checkbox), CAPTCHA (image grid), QR login, SMS/OTP, and publisher bot checks must still be escalated to the user in Chrome.
 
 Avoid mass downloading. Work in small batches, preferably after the user confirms the paper list. Leave a clear audit trail of what was downloaded, from where, and whether supporting information was found.
 
@@ -37,6 +39,24 @@ Before attempting downloads, confirm these conditions:
    cd <skill-folder> && node start.js
    ```
 6. The user has approved the target output folder.
+7. FlareSolverr is recommended for automatic Cloudflare JS Challenge resolution. If not available:
+   - Explain to the user what FlareSolverr does: "Some publishers (ScienceDirect, Wiley, T&F) show a 'Checking your browser...' page. FlareSolverr can clear these automatically — without it, you'll need to watch for them and click through manually. Takes ~1 minute to install."
+   - Also disclose the limitations:
+     * Only handles JS Challenge ("Checking your browser..."). Does NOT solve CAPTCHA images, checkboxes, or "Are you a robot?" pages (its CAPTCHA solvers are broken per upstream).
+     * Consumes ~500MB RAM for its headless Chrome instance.
+     * Requires Python 3.12+ and Chrome on the machine.
+     * Runs as a background process until manually stopped.
+   - Ask the user: "Install FlareSolverr now, or skip and handle Cloudflare pages manually?"
+   - If they agree, install and start it:
+     ```bash
+     # Clone and install
+     git clone https://github.com/FlareSolverr/FlareSolverr.git /tmp/flaresolverr-src
+     cd /tmp/flaresolverr-src && python3.12 -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+     # Start (macOS/Linux)
+     HEADLESS=false python3.12 src/flaresolverr.py &
+     ```
+   - Verify: `curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" -d '{"cmd":"sessions.list"}'`
+   - If they decline, proceed without it — Cloudflare challenges will be escalated to the user.
 
 ## Operating Model
 
@@ -51,7 +71,11 @@ Use a small, traceable batch workflow:
 3. Process one paper at a time unless the user explicitly approves a small batch.
 4. Search through Tsinghua Primo / 水木学术搜索 first.
 5. Follow library `PDF`, `在线全文`, `Full Text`, or `View PDF` routes before trying direct publisher DOI templates.
-6. Stop at institutional login, CAPTCHA, Cloudflare, or publisher bot checks and ask the user to complete the step in Chrome.
+6. If the page shows Cloudflare JS Challenge ("Checking your browser..." / "正在进行安全验证"):
+   - Check if FlareSolverr is available (`curl -s --max-time 3 localhost:8191/v1`).
+   - If available, attempt FlareSolverr resolution (see "FlareSolverr Cloudflare Handling" below).
+   - If unavailable, stop and ask the user to complete in Chrome.
+   - For CAPTCHA, Turnstile checkbox, institutional login, or publisher bot checks, always escalate to user.
 7. Save only verified PDF files. Do not mark a paper as downloaded until the local file exists and passes the verification checklist.
 
 ## Simple Log
@@ -95,6 +119,8 @@ failed_after_retry
 ip_not_authorized
 purchase_required
 not_pdf_response
+cloudflare_flaresolverr_solved
+cloudflare_flaresolverr_failed
 ```
 
 Use `cas_waiting_user` only when the browser is visibly at Tsinghua University CAS / unified identity authentication or an equivalent institutional SSO step. Do not treat this as a final failure.
@@ -175,6 +201,75 @@ When extracting PDF, online full text, or publisher links from Primo:
 3. If Primo redirects to a login page and says the IP is outside the authorized range, record `ip_not_authorized`. The user may need the THU VPN/WebVPN client.
 4. If Primo has no PDF but has an online-full-text link, follow that route before constructing a publisher URL manually.
 
+## FlareSolverr Cloudflare Handling (Optional)
+
+This section applies only when FlareSolverr is running on `localhost:8191`. If unavailable, skip this section entirely — Cloudflare challenges are escalated to the user as normal.
+
+**Check before use:**
+```bash
+curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" \
+  -d '{"cmd":"sessions.list"}' | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('status')=='ok' else 1)" 2>/dev/null && echo "FlareSolverr available" || echo "FlareSolverr unavailable — escalate to user"
+```
+
+When FlareSolverr is available, Cloudflare JS Challenge pages can be resolved without user intervention. Two modes are tried in order:
+
+### Cloudflare Detection
+
+Before escalating to the user, check if the page is a Cloudflare JS Challenge (auto-resolvable) vs. something requiring human input:
+
+```javascript
+const pageText = await proxyEval(targetId, `document.body.innerText.slice(0, 500)`);
+const isCloudflareJS = /checking.*browser|checking if the site connection is secure|just a moment/i.test(pageText);
+const isCaptcha = /captcha|verify you are human|select all|are you a robot/i.test(pageText);
+```
+
+- `isCloudflareJS && !isCaptcha` → attempt FlareSolverr resolution
+- `isCaptcha` → escalate to user (FlareSolverr's CAPTCHA solvers are broken per upstream docs)
+
+### Mode A: Cookie Injection (preferred)
+
+1. Send the blocked URL to FlareSolverr:
+   ```bash
+   curl -s http://localhost:8191/v1 -H "Content-Type: application/json" \
+     -d '{"cmd":"request.get","url":"<blocked URL>","maxTimeout":60000,"returnOnlyCookies":true}'
+   ```
+2. FlareSolverr returns `{ solution: { cookies: [{name, value, domain, ...}] } }`.
+3. Inject each cookie into the blocked Chrome tab via CDP:
+   ```javascript
+   document.cookie = "<name>=<value>; domain=<domain>; path=/; secure";
+   ```
+4. Reload the tab: `location.reload()`.
+5. Chrome now passes Cloudflare (via injected clearance cookies) and retains its Tsinghua CAS cookies for institutional auth.
+
+**Risk**: Cloudflare may tie `cf_clearance` to the User-Agent. FlareSolverr uses a headless Chrome UA that differs from the user's real Chrome UA. If Cloudflare's UA binding is strict, Mode A fails — proceed to Mode B.
+
+### Mode B: Content Extraction (fallback)
+
+1. Send the blocked URL to FlareSolverr without `returnOnlyCookies` — it returns the full page HTML.
+2. Extract relevant links from `solution.response`:
+   - For ScienceDirect: find the article PII-based "View PDF" link or `pdf.sciencedirectassets.com` signed URL
+   - For T&F: find `/doi/pdf/<DOI>?download=true`
+   - For SAGE: find `/storage/sage/journal/article/.../unzip/<DOI>.pdf`
+3. Navigate the user's Chrome directly to the extracted link. PDF CDNs (`pdf.sciencedirectassets.com`, `sage.cnpereading.com`) rarely have Cloudflare.
+4. If the PDF CDN also triggers Cloudflare, fall back to manual user resolution.
+
+### Failure Codes
+
+Add these to `download-log.tsv`:
+
+```text
+cloudflare_flaresolverr_solved     (Mode A or B succeeded)
+cloudflare_flaresolverr_failed     (neither mode worked — escalate to user)
+```
+
+### Detection in Per-Paper Flow
+
+During step 4 (classify page state), insert Cloudflare detection before marking `publisher_verification_waiting_user`:
+
+1. If page shows Cloudflare JS Challenge → attempt FlareSolverr (Mode A → Mode B)
+2. If FlareSolverr succeeds → continue to download
+3. If FlareSolverr fails or page shows CAPTCHA/Turnstile → escalate to user
+
 ## Publisher-Specific Playbooks (from lessons.md)
 
 **Before attempting any download, identify the publisher/platform and consult `lessons.md` for the field-tested playbook.** The lessons file contains per-publisher workflows, URL patterns, authentication traps, and workarounds discovered through live testing. Do not guess a URL pattern when a proven one exists in the lessons.
@@ -236,9 +331,14 @@ Reduce the chance of triggering them by using a conservative access pattern:
 
 When a publisher verification page appears:
 
-1. Stop automated actions on that tab.
-2. Record the paper in `download-log.tsv` with `download_success=no` and `failure_reason=publisher_verification_waiting_user`; use `sciencedirect_robot_check` for ScienceDirect's "Are you a robot?" page.
-3. Tell the user which paper and tab need manual attention.
+1. Check the page type:
+   - Cloudflare JS Challenge → attempt FlareSolverr (see "FlareSolverr Cloudflare Handling")
+   - CAPTCHA, Turnstile, "Are you a robot?", or other challenge → stop automated actions on that tab
+2. Record the paper in `download-log.tsv` with `download_success=no` and failure reason:
+   - `cloudflare_flaresolverr_solved` if FlareSolverr resolved it
+   - `cloudflare_flaresolverr_failed` if FlareSolverr could not resolve it
+   - `publisher_verification_waiting_user` or `sciencedirect_robot_check` otherwise
+3. If FlareSolverr failed or is unavailable, tell the user which paper and tab need manual attention.
 4. Do not click CAPTCHA, Cloudflare, "Are you a robot?", bot-check, or similar challenge controls automatically.
 5. After the user says the verification is complete, continue from the same tab and try the visible article/PDF route once.
 6. If verification immediately reappears, mark `do_not_auto_retry` and move on.
@@ -348,9 +448,9 @@ Minimum verification checklist:
 
 If direct publisher navigation triggers ScienceDirect "Are you a robot?", Cloudflare, CAPTCHA, or another bot challenge:
 
-- Do not bypass it.
-- Do not auto-click the challenge.
-- Record `publisher_verification_waiting_user` or `sciencedirect_robot_check`.
+- For Cloudflare JS Challenge ("Checking your browser..." / "正在进行安全验证"): if FlareSolverr is available, attempt resolution (Mode A → Mode B) before escalating.
+- For CAPTCHA, Turnstile checkbox, or "Are you a robot?": do not bypass or auto-click.
+- Record `publisher_verification_waiting_user` or `sciencedirect_robot_check` if FlareSolverr is unavailable or fails.
 - Ask the user to solve it in Chrome.
 - Then continue once from the same now-open page.
 - If the same challenge immediately reappears, mark `do_not_auto_retry` and move on.
