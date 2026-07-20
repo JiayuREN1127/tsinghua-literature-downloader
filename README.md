@@ -21,6 +21,14 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 - Node.js 22+
 - FlareSolverr（可选，用于自动清除 Cloudflare）
 
+## 目录结构
+
+```
+├── SKILL/          ← 技能核心（安装时只需要这个目录）
+├── TEST/           ← 测试用，安装技能时不需要
+└── README.md
+```
+
 ## 快速开始
 
 ```bash
