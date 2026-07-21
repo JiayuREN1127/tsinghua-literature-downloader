@@ -13,6 +13,8 @@ This skill turns the verified workflow into a repeatable, legally scoped process
 
 Use only the user's legitimate institutional access. Do not bypass paywalls, DRM, CAPTCHA, two-factor authentication, or publisher login gates.
 
+Do not use Sci-Hub, Library Genesis, or any other paywall-bypass or pirate mirror sites. If a paper cannot be accessed through Tsinghua University Library / WebVPN / Primo / publisher institutional access, record `no_authorized_pdf_found` and move on. Do not search for unauthorized copies.
+
 Cloudflare JS Challenge ("Checking your browser...") is an automated browser test, not a human verification. FlareSolverr may be used to resolve it programmatically. Cloudflare Turnstile (checkbox), CAPTCHA (image grid), QR login, SMS/OTP, and publisher bot checks must still be escalated to the user in Chrome.
 
 Avoid mass downloading. Work in small batches, preferably after the user confirms the paper list. Leave a clear audit trail of what was downloaded, from where, and whether supporting information was found.
