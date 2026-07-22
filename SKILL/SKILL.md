@@ -41,6 +41,15 @@ Exception for THU CAS saved-login pages: if the user explicitly says that Chrome
 
 Do not inspect or export cookies, passwords, local storage, browser profiles, or session files. Use the browser's already-authenticated page context only.
 
+## Browser & Tab Management
+
+- **Never close the user's browser.** Do not run `killall`, `pkill`, or any command that terminates Chrome. The user relies on their open tabs, session state, and ongoing work.
+- **Do not close existing tabs** without the user's explicit permission. The user may have research pages, videos, or work in those tabs.
+- **Open new tabs visibly** — the user should be able to see what pages are being opened. Do not use hidden or background-only tabs.
+- **After a paper is downloaded and verified**, its publisher/PDF tabs may be closed to free space. Leave Primo tabs open for reuse.
+- **Reuse tabs when possible** — navigate a single tab per publisher rather than opening new ones.
+- If the CDP proxy is already connected to Chrome, do not restart it.
+
 ## Preconditions
 
 Before attempting downloads, confirm these conditions:
