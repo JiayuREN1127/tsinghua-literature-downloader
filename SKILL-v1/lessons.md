@@ -26,21 +26,7 @@
 
 ---
 
-## FlareSolverr 两模式工作流 (v2.0)
-
-v2.0 采用**预热-下载架构**：Phase 1 一次性清除所有 Cloudflare 保护域的 `cf_clearance` + 触发 CAS，Phase 2 逐篇快速下载。此节记录 FlareSolverr 的底层技术细节。
-
-### 预热目标域
-
-需要预清除 Cloudflare 的出版商（按 DOI 前缀识别）：
-
-| 出版商 | DOI 前缀 | cf_clearance 域 |
-|--------|---------|----------------|
-| ScienceDirect | `10.1016/` | `.sciencedirect.com` |
-| Wiley | `10.1002/`, `10.1111/` | `.onlinelibrary.wiley.com` |
-| Taylor & Francis | `10.1080/` | `.tandfonline.com` |
-
-无需预清除（走 CAS 直连）：ProQuest、EBSCO、JSTOR、SAGE（中国镜像）。
+## FlareSolverr 两模式工作流
 
 当出版商页面（ScienceDirect、Taylor & Francis、SAGE 镜像等）显示 Cloudflare JS Challenge 时，使用 FlareSolverr (`localhost:8191`) 解析。两个模式依次尝试：
 
