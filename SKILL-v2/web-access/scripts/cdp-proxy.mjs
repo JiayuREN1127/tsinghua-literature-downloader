@@ -358,7 +358,7 @@ const server = http.createServer(async (req, res) => {
       }
       const body = (await readBody(req)).trim();
       const targetUrl = body || 'about:blank';
-      const resp = await sendCDP('Target.createTarget', { url: targetUrl, background: false });
+      const resp = await sendCDP('Target.createTarget', { url: targetUrl, background: true });
       const targetId = resp.result.targetId;
       managedTabs.set(targetId, { lastAccessed: Date.now() });
 

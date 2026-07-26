@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+# download artifacts (per SKILL-vX dir) — never commit PDFs or partial transfers
+downloads/
+*.partial
