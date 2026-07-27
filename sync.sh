@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # [Unix-only] Sync canonical skill to local AI tool directories.
 #
-# v3.1 (SKILL-v3.1/) is the CURRENT CANONICAL version.
+# v3.2 (SKILL-v3.2/) is the CURRENT CANONICAL version (network-safe).
 # It installs to the default path (tsinghua-literature-downloader).
 # Legacy versions install with versioned suffixes.
 #
@@ -13,8 +13,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# --- Canonical (v3.1, click-first) ---
-CANONICAL_SRC="$REPO_ROOT/SKILL-v3.1"
+# --- Canonical (v3.2, network-safe) ---
+CANONICAL_SRC="$REPO_ROOT/SKILL-v3.2"
 CANONICAL_TARGETS=(
   "$HOME/.claude/skills/tsinghua-literature-downloader"
   "$HOME/.agents/skills/tsinghua-literature-downloader"
@@ -32,6 +32,9 @@ if [[ -d "$REPO_ROOT/SKILL-v2" ]]; then
 fi
 if [[ -d "$REPO_ROOT/SKILL-v3" ]]; then
   LEGACY+=("$REPO_ROOT/SKILL-v3|-v3|v3.0 token-disciplined")
+fi
+if [[ -d "$REPO_ROOT/SKILL-v3.1" ]]; then
+  LEGACY+=("$REPO_ROOT/SKILL-v3.1|-v3.1|v3.1 click-first")
 fi
 
 APPLY=false
@@ -56,12 +59,12 @@ sync_dir() {
 
 echo "=========================================="
 echo " tsinghua-literature-downloader sync"
-echo " canonical: SKILL-v3.1 (click-first)"
+echo " canonical: SKILL-v3.2 (network-safe)"
 echo " mode: $( $APPLY && echo 'APPLY' || echo 'DRY RUN (pass --apply to apply)' )"
 echo "=========================================="
 echo ""
 
-echo "--- canonical (SKILL-v3.1) → default path ---"
+echo "--- canonical (SKILL-v3.2) → default path ---"
 for t in "${CANONICAL_TARGETS[@]}"; do
   sync_dir "$CANONICAL_SRC" "$t" "$(basename "$(dirname "$t")")/$(basename "$t")"
 done
