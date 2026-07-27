@@ -262,6 +262,74 @@ Enumerate with `node scripts/probe.mjs --list`. Each probe's compact return sche
 | re-reading page text to locate a PDF link | publisher probe returns the exact URL |
 | returning every `<a>` on the page | probes cap at 5–8 links, each ≤160 chars |
 
+## Download Strategy per Publisher (v3.1 — click-first)
+
+Empirical testing (2026-07-27, 8 databases) established that **browser-native download (click-download / navigate-download) works for 5/8 databases**, fetch() works for only 2/8, and 1 requires human CAPTCHA resolution. The default strategy is therefore **click-first**; fetch() is the exception, not the rule.
+
+Files downloaded via click/navigate land in the browser's default download directory (`~/Downloads`). After download, `mv` the file to `downloads/` with a proper name.
+
+### Strategy table
+
+| Publisher | DOI prefix | Strategy | Exact steps |
+|---|---|---|---|
+| **SAGE** | `10.1177/` | **fetch** | From `sage.cnpereading.com`, extract PDF path from RSC `<script>` → `fetch(origin+path)` → chunk-transfer. Use `get-pdf.mjs --publisher sage`. |
+| **Taylor & Francis** | `10.1080/` | **fetch** | After SSO, `fetch("/doi/pdf/<DOI>?download=true")` → `application/pdf`. Use `get-pdf.mjs --publisher tandfonline --arg doi=<DOI>`. |
+| **JSTOR** | `10.2307/` | **click-download** | On T&C page, click `<terms-and-conditions-pharos-button>` shadow DOM button → native download to `~/Downloads` → `mv`. |
+| **Wiley** | `10.1002/`, `10.1111/` | **navigate-download** | Navigate browser to `https://onlinelibrary.wiley.com/doi/pdfdirect/<DOI>?download=true` → `isDownload:true` → native download → `mv`. |
+| **ProQuest / APA** | `10.1037/` | **click-download** | Click article-page "Download PDF" link → `media.proquest.com` → native download → `mv`. |
+| **EBSCO / INFORMS** | `10.5465/`, `10.1287/` | **click-download (2-step)** | In viewer: (1) click `button[data-auto=tool-button][aria-label=下载]` → modal opens; (2) click `button[data-auto=bulk-download-modal-download-button]` → native download → `mv`. |
+| **ScienceDirect** | `10.1016/` | **click (human-assisted)** | CDP triggers CAPTCHA ("Are you a robot?"). Human resolves CAPTCHA in Chrome → click "View PDF" → S3 presigned tab → human downloads or `mv` from `~/Downloads`. |
+
+### Click-download pattern (JSTOR / ProQuest / EBSCO)
+
+```javascript
+// JSTOR: click shadow DOM button on T&C page
+var el = document.querySelector("terms-and-conditions-pharos-button");
+el.shadowRoot.querySelector("button").click();
+
+// ProQuest: click "Download PDF" link
+var a = [...document.querySelectorAll("a")].find(e => /download pdf/i.test(e.textContent.trim()));
+a.click();
+
+// EBSCO step 1: click toolbar download button
+var btn = [...document.querySelectorAll("button[data-auto=tool-button]")]
+  .find(b => b.getAttribute("aria-label") === "下载");
+btn.click();
+// EBSCO step 2: after modal opens, click the modal download button
+var modalBtn = document.querySelector("[data-auto=bulk-download-modal-download-button]");
+modalBtn.click();
+```
+
+After any click-download, wait ~8–12s, then check `~/Downloads` for the new file:
+```bash
+ls -t ~/Downloads/ | head -1   # newest file
+mv ~/Downloads/<filename> downloads/<paper>.pdf
+```
+
+### Navigate-download pattern (Wiley)
+
+```bash
+# Navigate browser to pdfdirect URL — triggers native download
+curl -s -X POST "http://127.0.0.1:3456/navigate?target=<id>" \
+  --data "https://onlinelibrary.wiley.com/doi/pdfdirect/<DOI>?download=true"
+# Response includes isDownload:true; file lands in ~/Downloads
+```
+
+### Why not fetch() for most publishers?
+
+fetch() fails on 6/8 databases because:
+- **T&C interstitial** (JSTOR): server returns HTML instead of PDF.
+- **Cloudflare on fetch API** (Wiley): `fetch()` → 403, but browser navigation passes (different cookie handling).
+- **PDF.js viewer** (ProQuest/EBSCO): PDF is rendered in a custom viewer, no direct fetchable URL.
+- **Dynamic signed URL** (ScienceDirect): PDF URL is time-limited and requires JS execution to obtain.
+- **Anti-bot CAPTCHA** (ScienceDirect): blocks all automated access until human resolves.
+
+Browser-native download (click/navigate) avoids all of these because the browser handles cookies, redirects, Cloudflare, and session management exactly as a human user would.
+
+### When fetch() IS the right choice
+
+Only for SAGE and T&F, where the server directly returns `application/pdf` bytes after authentication. For these two, `get-pdf.mjs` remains the primary tool.
+
 ## Grouped Download Mode (recommended for batches)
 
 When downloading more than a few papers, group by publisher (DOI prefix) and authenticate once per group. Probes check readiness; `get-pdf.mjs` handles each publisher's fetch mechanics. CAS sessions are cross-publisher, so one login caches for all groups.
@@ -275,27 +343,31 @@ When downloading more than a few papers, group by publisher (DOI prefix) and aut
 For each paper in the group, on the group's reused tab:
 1. Navigate to the article page (Alma resolver first: `https://tsinghua.alma.exlibrisgroup.com.cn/view/uresolver/86THU_INST/openurl?rft_id=info:doi/<DOI>&svc_dat=single_service`).
 2. `node scripts/probe.mjs --target <id> --name <publisher>` → confirm ready (`access`/`found`). If CAS expired mid-batch (every ~5 papers, re-run `classifyPage`), re-warm this group only and continue from the failed paper.
-3. `node scripts/get-pdf.mjs --target <id> --publisher <name> [--arg doi=...] --out downloads/<paper>.pdf` → discovers the fetch plan and saves the PDF in one command. Plan details go to stderr; only the compact result reaches context.
+3. **Download** using the publisher's strategy from the table above ("DOI prefix → publisher → download strategy"):
+   - **fetch publishers** (SAGE, T&F, Annual Reviews, IEEE): `node scripts/get-pdf.mjs --target <id> --publisher <name> [--arg doi=...] --out downloads/<paper>.pdf`
+   - **click-download publishers** (JSTOR, ProQuest, EBSCO, Nature): click the download button via CDP eval (see "Click-download pattern" above) → file lands in `~/Downloads` → `mv ~/Downloads/<file> downloads/<paper>.pdf`
+   - **navigate-download publishers** (Wiley): navigate browser to `pdfdirect?download=true` → `~/Downloads` → `mv`
+   - **ScienceDirect**: escalate to user for CAPTCHA, then click "View PDF"
 4. Verify: `python3 scripts/extract_pdf_text.py --pdf <out> --pages 5 --verify --doi <doi> --title "<title>"`.
 5. Append to `download-log.tsv`.
 
 ### Phase 3 — Summary
 Report per-group totals (`total / success / failed`), failed papers with reasons, and any papers needing user intervention (`cas_waiting_user`, CAPTCHA, etc.).
 
-### DOI prefix → publisher → tools
+### DOI prefix → publisher → download strategy
 
-| Prefix | Publisher | Probe (`--name`) | Action (`--publisher`) | Fetch mode |
+| Prefix | Publisher | Probe (`--name`) | **Download strategy** | Tool |
 |---|---|---|---|---|
-| `10.1016/` | ScienceDirect | `sciencedirect` | `sciencedirect` | newtab-fetch (presigned S3) |
-| `10.1002/`, `10.1111/` | Wiley | `wiley` | `wiley` | fetch (pdfdirect) |
-| `10.1287/` | INFORMS (EBSCO) | `ebsco` | `ebsco` | fetch (CDS, no credentials) |
-| `10.1037/` | APA (ProQuest) | `proquest` | `proquest` | pdfjs (viewer) |
-| `10.1080/` | Taylor & Francis | `tandfonline` | `tandfonline` | fetch |
-| `10.1177/` | SAGE | `sage` | `sage` | fetch (China mirror only) |
-| `10.2307/` | JSTOR | `jstor` | `jstor` | fetch |
-| `10.1146/` | Annual Reviews | `annualreviews` | `annualreviews` | fetch (POST) |
-| `10.1109/` | IEEE Xplore | `ieee` | `ieee` | fetch (iframe src; needs stamp.jsp) |
-| `10.1038/` | Nature | `nature` | `nature` | click-download (native) |
+| `10.1016/` | ScienceDirect | `sciencedirect` | **click (human CAPTCHA)** | CDP click + human |
+| `10.1002/`, `10.1111/` | Wiley | `wiley` | **navigate-download** | CDP navigate to pdfdirect |
+| `10.1287/` | INFORMS (EBSCO) | `ebsco` | **click-download (2-step)** | CDP click in viewer |
+| `10.1037/` | APA (ProQuest) | `proquest` | **click-download** | CDP click "Download PDF" |
+| `10.1080/` | Taylor & Francis | `tandfonline` | **fetch** | `get-pdf.mjs` |
+| `10.1177/` | SAGE | `sage` | **fetch** | `get-pdf.mjs` |
+| `10.2307/` | JSTOR | `jstor` | **click-download** | CDP click T&C button |
+| `10.1146/` | Annual Reviews | `annualreviews` | **fetch (POST)** | `get-pdf.mjs` |
+| `10.1109/` | IEEE Xplore | `ieee` | **fetch (iframe src)** | `get-pdf.mjs` |
+| `10.1038/` | Nature | `nature` | **click-download** | CDP click "Download PDF" |
 
 The single-paper flow below ("Recommended Search Workflow" + "Per-Paper Workflow") remains valid as the fallback for one-off downloads.
 
@@ -543,16 +615,24 @@ CAS sessions last hours — they rarely need recovery. If CAS does expire, re-ru
 
 ## Download PDF From Browser Context
 
-**Primary tool (v3): `scripts/get-pdf.mjs`.** It runs the publisher's action module to discover the correct fetch plan (fetch / POST / new-tab presigned / click-to-download / PDF.js), then executes it. One command per paper:
+### click-download (primary, 5/8 publishers)
+
+For JSTOR, ProQuest, EBSCO, Wiley, and Nature: click the publisher's download button via CDP → browser triggers native download → file lands in `~/Downloads` → `mv` to `downloads/`. See "Download Strategy per Publisher" above for exact per-publisher steps.
+
+This approach is preferred because the browser handles cookies, Cloudflare, redirects, and session management exactly as a human user would — no fetch/CORS/interstitial issues.
+
+### fetch() via get-pdf.mjs (SAGE, T&F, Annual Reviews, IEEE only)
+
+For publishers where the server directly returns `application/pdf` bytes:
 
 ```bash
 node scripts/get-pdf.mjs --target <id> --publisher <name> [--arg doi=...] --out downloads/paper.pdf
 node scripts/get-pdf.mjs --list          # enumerate action modules
 ```
 
-Use this whenever the publisher has an action module (see the DOI-prefix table in "Grouped Download Mode"). The plan details go to stderr; only the compact result reaches context.
+### Legacy fallback: browser_pdf_downloader.mjs
 
-**Legacy fallback: `scripts/browser_pdf_downloader.mjs`.** Use it only for publishers without an action module, or when a direct PDF URL is already open in Chrome and a plain `fetch(location.href, {credentials:"include"})` is enough. It does a simple GET fetch and chunk-transfer — it cannot do POST, no-credentials, new-tab, click, or PDF.js modes.
+Use only when a direct PDF URL is already open in Chrome and a plain `fetch(location.href, {credentials:"include"})` is enough:
 
 ```bash
 node scripts/browser_pdf_downloader.mjs \

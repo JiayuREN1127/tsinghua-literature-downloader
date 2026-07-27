@@ -5,7 +5,7 @@ metadata:
   compatibility: Requires a local Chrome session logged in by the user, Chrome remote debugging permission, and Node.js 22+. Uses only user-authorized access.
 ---
 
-# 清华大学文献下载工具
+# 清华大学文献下载工具（统一版）
 
 This skill turns the verified workflow into a repeatable, legally scoped process for finding, downloading, and reading papers through the user's Tsinghua University Library / WebVPN access.
 
@@ -60,7 +60,56 @@ Before attempting downloads, confirm these conditions:
      # Windows: use %TEMP% instead of /tmp, python instead of python3.12
      ```
    - Verify: `curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" -d '{"cmd":"sessions.list"}'`
-   - If they decline, proceed without it — Cloudflare challenges will be escalated to the user.
+    - If they decline, proceed without it — Cloudflare challenges will be escalated to the user.
+
+## Session Warmup (Phase 1)
+
+Run this phase once per session, after confirming preconditions and before per-paper downloads.
+It resolves Cloudflare and activates CAS for all publishers upfront, so per-paper downloads proceed without interruptions.
+
+### 1.1 Identify Target Publishers
+
+Inspect the paper list for DOI prefixes. Cloudflare-protected publishers requiring pre-clearance:
+
+| Publisher | DOI prefix | Domain for cf_clearance |
+|-----------|-----------|--------------------------|
+| ScienceDirect | `10.1016/` | `.sciencedirect.com` |
+| Wiley | `10.1002/`, `10.1111/` | `.onlinelibrary.wiley.com` |
+| Taylor & Francis | `10.1080/` | `.tandfonline.com` |
+
+Publishers without Cloudflare (CAS-only, warmup still needed): ProQuest, EBSCO, JSTOR, SAGE, Annual Reviews, IEEE.
+
+### 1.2 Check FlareSolverr Availability
+
+```bash
+curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" \
+  -d '{"cmd":"sessions.list"}' 2>/dev/null
+```
+
+If unavailable, skip Cloudflare clearance — those challenges will be handled per-paper.
+
+### 1.3 Clear Cloudflare for Each Protected Publisher
+
+For each Cloudflare-protected publisher in the paper list:
+
+1. Pick any article URL on that publisher's domain.
+2. Request FlareSolverr to resolve it and return only cookies (see "FlareSolverr Cloudflare Handling → Mode A" for commands).
+3. Extract the `cf_clearance` cookie from `solution.cookies`.
+4. Open a new Chrome tab, navigate to `https://<publisher-domain>`.
+5. Inject the cookie: `document.cookie = "cf_clearance=<value>; domain=<domain>; path=/; secure";`
+
+### 1.4 Trigger CAS for Each Publisher
+
+For each publisher in the paper list (Cloudflare-protected or not):
+
+1. Navigate to one article page on that publisher.
+2. Check for institutional access indicators (see publisher-specific playbooks in lessons.md).
+3. If access not shown, trigger SHIBBOLETH/CAS as documented in the publisher's playbook.
+4. If CAS login page appears with auto-filled credentials, click login once (with user authorization). If not auto-filled, pause and ask the user.
+
+### 1.5 Verify Warmup
+
+Verify each publisher by checking one article page shows institutional access text. If any publisher fails, re-run its CAS trigger step.
 
 ## Operating Model
 
@@ -379,6 +428,17 @@ When a paper reaches a CAS or institutional SSO page:
 8. Re-detect whether the page is now a publisher article page, a PDF viewer, or another institutional handoff.
 9. If resolved, download and verify the PDF, then update `download-log.tsv` with `download_success=yes`.
 10. If it loops back to CAS after a completed user login, record `failed_after_retry` with the observed reason and move on.
+
+## Mid-Session Recovery
+
+If a publisher page unexpectedly shows Cloudflare during per-paper downloads:
+
+1. Re-run section 1.3 for that specific publisher only (single FlareSolverr call → inject cookie).
+2. Refresh the blocked tab.
+3. If `cf_clearance` injection fails (UA mismatch), fall back to full FlareSolverr content extraction (Mode B).
+4. If Cloudflare immediately reappears, escalate to user and log `cloudflare_flaresolverr_failed`.
+
+CAS sessions last hours — they rarely need recovery. If CAS does expire, re-run section 1.4 for the affected publisher.
 
 ## Download PDF From Browser Context
 
