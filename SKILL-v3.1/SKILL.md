@@ -3,9 +3,19 @@ name: tsinghua-literature-downloader
 description: Use this skill whenever the user wants to use their own logged-in Tsinghua University Library, WebVPN, 水木学术搜索, ScienceDirect, publisher, or Chrome session to legally search, download, organize, retry, and read academic PDFs. Trigger on requests like "用清华图书馆下载文献", "WebVPN 下载 PDF", "水木学术搜索下载文献", "ScienceDirect 人机验证后继续", or "帮我下载这几篇论文".
 metadata:
   compatibility: Requires a local Chrome session logged in by the user, Chrome remote debugging permission, and Node.js 22+. Uses only user-authorized access.
+  version: 3.1-click-first
 ---
 
-# 清华大学文献下载工具
+# 清华大学文献下载工具（v3 · token-disciplined）
+
+v3 = self-contained canonical version. Full playbooks inlined (no cross-dir references). Adds a hard Token Discipline layer and a probe library so `/eval` returns compact verdicts instead of page dumps.
+
+**What changed vs v1:**
+- New `probes/` library — one compact probe per publisher + a combined `classifyPage()`. Run via `scripts/probe.mjs`; the JS payload stays server-side, the agent sees only a ~200-byte JSON verdict.
+- New "Token Discipline" section (hard rules) below — applies to every `/eval` call.
+- Self-contained: no `../SKILL-v1/` references.
+
+**Legacy freeze:** `SKILL-v1/` (unified) and `SKILL/` (grouped) remain in the repo untouched. v3 is canonical; `sync.sh` should be repointed to install v3 to the default path (see repo root).
 
 This skill turns the verified workflow into a repeatable, legally scoped process for finding, downloading, and reading papers through the user's Tsinghua University Library / WebVPN access.
 
@@ -60,7 +70,56 @@ Before attempting downloads, confirm these conditions:
      # Windows: use %TEMP% instead of /tmp, python instead of python3.12
      ```
    - Verify: `curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" -d '{"cmd":"sessions.list"}'`
-   - If they decline, proceed without it — Cloudflare challenges will be escalated to the user.
+    - If they decline, proceed without it — Cloudflare challenges will be escalated to the user.
+
+## Session Warmup (Phase 1)
+
+Run this phase once per session, after confirming preconditions and before per-paper downloads.
+It resolves Cloudflare and activates CAS for all publishers upfront, so per-paper downloads proceed without interruptions.
+
+### 1.1 Identify Target Publishers
+
+Inspect the paper list for DOI prefixes. Cloudflare-protected publishers requiring pre-clearance:
+
+| Publisher | DOI prefix | Domain for cf_clearance |
+|-----------|-----------|--------------------------|
+| ScienceDirect | `10.1016/` | `.sciencedirect.com` |
+| Wiley | `10.1002/`, `10.1111/` | `.onlinelibrary.wiley.com` |
+| Taylor & Francis | `10.1080/` | `.tandfonline.com` |
+
+Publishers without Cloudflare (CAS-only, warmup still needed): ProQuest, EBSCO, JSTOR, SAGE, Annual Reviews, IEEE.
+
+### 1.2 Check FlareSolverr Availability
+
+```bash
+curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" \
+  -d '{"cmd":"sessions.list"}' 2>/dev/null
+```
+
+If unavailable, skip Cloudflare clearance — those challenges will be handled per-paper.
+
+### 1.3 Clear Cloudflare for Each Protected Publisher
+
+For each Cloudflare-protected publisher in the paper list:
+
+1. Pick any article URL on that publisher's domain.
+2. Request FlareSolverr to resolve it and return only cookies (see "FlareSolverr Cloudflare Handling → Mode A" for commands).
+3. Extract the `cf_clearance` cookie from `solution.cookies`.
+4. Open a new Chrome tab, navigate to `https://<publisher-domain>`.
+5. Inject the cookie: `document.cookie = "cf_clearance=<value>; domain=<domain>; path=/; secure";`
+
+### 1.4 Trigger CAS for Each Publisher
+
+For each publisher in the paper list (Cloudflare-protected or not):
+
+1. Navigate to one article page on that publisher.
+2. Check for institutional access indicators (see publisher-specific playbooks in lessons.md).
+3. If access not shown, trigger SHIBBOLETH/CAS as documented in the publisher's playbook.
+4. If CAS login page appears with auto-filled credentials, click login once (with user authorization). If not auto-filled, pause and ask the user.
+
+### 1.5 Verify Warmup
+
+Verify each publisher by checking one article page shows institutional access text. If any publisher fails, re-run its CAS trigger step.
 
 ## Operating Model
 
@@ -157,24 +216,178 @@ If this hangs or fails, ask the user to confirm the remote debugging checkbox.
 
 Use `/navigate` rather than `/new` for Primo URLs containing `#!` fragments. If a `#!` fragment is stripped, Chrome may open `about:blank` or a wrong page. For `/new` and `/navigate`, pass the target URL in the POST body rather than the query string.
 
+## Token Discipline (v3 — hard rules)
+
+Every byte returned by `/eval` enters the agent's context and costs tokens. The dominant cause of token exhaustion in v1 was `/eval` calls returning raw page HTML or unbounded `innerText` (publisher pages are 100–500 KB). v3 enforces the rules below.
+
+### Hard rules
+
+1. **Never** return `document.body.innerHTML`, `outerHTML`, or unbounded `innerText` / `textContent` from `/eval`. Always slice + normalize.
+2. Every `/eval` must return a **compact JSON object, ≤ ~500 bytes**. If a value could be large (link lists, script text), cap arrays (`.slice(0, N)`) and shorten strings (`.slice(0, 160)`).
+3. **Prefer the probe library.** Instead of writing ad-hoc `/eval` JS, run:
+   ```bash
+   node scripts/probe.mjs --target <id> --name <probeName> [--arg key=val ...]
+   ```
+   The probe JS lives server-side in `probes/`; only the ~200-byte verdict enters context.
+4. Use `classifyPage` first (stage / access / cloudflare / captcha / candidate PDF links in one call). Then use the publisher-specific probe. Fall back to raw `/eval` only for something no probe covers.
+5. Never poll a page by re-reading its content. Re-run the probe (fresh small verdict) or check `/info` (returns title + url + ready only).
+6. `probe.mjs` hard-clamps output at 5000 chars as a safety net — a single buggy probe cannot blow up context.
+
+### Probe → use map
+
+| Situation | Probe |
+|---|---|
+| Any page, first look | `classifyPage` |
+| Primo / Alma result page | `primo` |
+| ScienceDirect article | `sciencedirect --arg pii=<PII>` |
+| EBSCO / INFORMS | `ebsco` |
+| Wiley article | `wiley --arg doi=<DOI>` |
+| ProQuest / APA | `proquest` |
+| SAGE | `sage` (also reports `onWrongSite` for sagepub.com) |
+| Taylor & Francis | `tandfonline --arg doi=<DOI>` |
+| JSTOR | `jstor` |
+| Annual Reviews | `annualreviews` |
+| IEEE Xplore / stamp.jsp | `ieee` |
+| Nature | `nature` |
+
+Enumerate with `node scripts/probe.mjs --list`. Each probe's compact return schema is documented at the top of its file in `probes/`.
+
+### Forbidden vs correct
+
+| Forbidden (token blowup) | Correct |
+|---|---|
+| `/eval` returning `document.body.innerText` | `probe.mjs --name classifyPage` |
+| `/eval` returning `document.body.innerHTML` | a publisher probe (filters DOM server-side) |
+| separate `/eval` for "is Cloudflare?" then "has access?" | one `classifyPage` returns both |
+| re-reading page text to locate a PDF link | publisher probe returns the exact URL |
+| returning every `<a>` on the page | probes cap at 5–8 links, each ≤160 chars |
+
+## Download Strategy per Publisher (v3.1 — click-first)
+
+Empirical testing (2026-07-27, 8 databases) established that **browser-native download (click-download / navigate-download) works for 5/8 databases**, fetch() works for only 2/8, and 1 requires human CAPTCHA resolution. The default strategy is therefore **click-first**; fetch() is the exception, not the rule.
+
+Files downloaded via click/navigate land in the browser's default download directory (`~/Downloads`). After download, `mv` the file to `downloads/` with a proper name.
+
+### Strategy table
+
+| Publisher | DOI prefix | Strategy | Exact steps |
+|---|---|---|---|
+| **SAGE** | `10.1177/` | **fetch** | From `sage.cnpereading.com`, extract PDF path from RSC `<script>` → `fetch(origin+path)` → chunk-transfer. Use `get-pdf.mjs --publisher sage`. |
+| **Taylor & Francis** | `10.1080/` | **fetch** | After SSO, `fetch("/doi/pdf/<DOI>?download=true")` → `application/pdf`. Use `get-pdf.mjs --publisher tandfonline --arg doi=<DOI>`. |
+| **JSTOR** | `10.2307/` | **click-download** | On T&C page, click `<terms-and-conditions-pharos-button>` shadow DOM button → native download to `~/Downloads` → `mv`. |
+| **Wiley** | `10.1002/`, `10.1111/` | **navigate-download** | Navigate browser to `https://onlinelibrary.wiley.com/doi/pdfdirect/<DOI>?download=true` → `isDownload:true` → native download → `mv`. |
+| **ProQuest / APA** | `10.1037/` | **click-download** | Click article-page "Download PDF" link → `media.proquest.com` → native download → `mv`. |
+| **EBSCO / INFORMS** | `10.5465/`, `10.1287/` | **click-download (2-step)** | In viewer: (1) click `button[data-auto=tool-button][aria-label=下载]` → modal opens; (2) click `button[data-auto=bulk-download-modal-download-button]` → native download → `mv`. |
+| **ScienceDirect** | `10.1016/` | **click (human-assisted)** | CDP triggers CAPTCHA ("Are you a robot?"). Human resolves CAPTCHA in Chrome → click "View PDF" → S3 presigned tab → human downloads or `mv` from `~/Downloads`. |
+
+### Click-download pattern (JSTOR / ProQuest / EBSCO)
+
+```javascript
+// JSTOR: click shadow DOM button on T&C page
+var el = document.querySelector("terms-and-conditions-pharos-button");
+el.shadowRoot.querySelector("button").click();
+
+// ProQuest: click "Download PDF" link
+var a = [...document.querySelectorAll("a")].find(e => /download pdf/i.test(e.textContent.trim()));
+a.click();
+
+// EBSCO step 1: click toolbar download button
+var btn = [...document.querySelectorAll("button[data-auto=tool-button]")]
+  .find(b => b.getAttribute("aria-label") === "下载");
+btn.click();
+// EBSCO step 2: after modal opens, click the modal download button
+var modalBtn = document.querySelector("[data-auto=bulk-download-modal-download-button]");
+modalBtn.click();
+```
+
+After any click-download, wait ~8–12s, then check `~/Downloads` for the new file:
+```bash
+ls -t ~/Downloads/ | head -1   # newest file
+mv ~/Downloads/<filename> downloads/<paper>.pdf
+```
+
+### Navigate-download pattern (Wiley)
+
+```bash
+# Navigate browser to pdfdirect URL — triggers native download
+curl -s -X POST "http://127.0.0.1:3456/navigate?target=<id>" \
+  --data "https://onlinelibrary.wiley.com/doi/pdfdirect/<DOI>?download=true"
+# Response includes isDownload:true; file lands in ~/Downloads
+```
+
+### Why not fetch() for most publishers?
+
+fetch() fails on 6/8 databases because:
+- **T&C interstitial** (JSTOR): server returns HTML instead of PDF.
+- **Cloudflare on fetch API** (Wiley): `fetch()` → 403, but browser navigation passes (different cookie handling).
+- **PDF.js viewer** (ProQuest/EBSCO): PDF is rendered in a custom viewer, no direct fetchable URL.
+- **Dynamic signed URL** (ScienceDirect): PDF URL is time-limited and requires JS execution to obtain.
+- **Anti-bot CAPTCHA** (ScienceDirect): blocks all automated access until human resolves.
+
+Browser-native download (click/navigate) avoids all of these because the browser handles cookies, redirects, Cloudflare, and session management exactly as a human user would.
+
+### When fetch() IS the right choice
+
+Only for SAGE and T&F, where the server directly returns `application/pdf` bytes after authentication. For these two, `get-pdf.mjs` remains the primary tool.
+
+## Grouped Download Mode (recommended for batches)
+
+When downloading more than a few papers, group by publisher (DOI prefix) and authenticate once per group. Probes check readiness; `get-pdf.mjs` handles each publisher's fetch mechanics. CAS sessions are cross-publisher, so one login caches for all groups.
+
+### Phase 1 — Warmup (once)
+1. Scan the paper list; bucket by DOI prefix → publisher (table below).
+2. For Cloudflare-protected groups (ScienceDirect, Wiley, T&F): pre-clear via FlareSolverr (see FlareSolverr section).
+3. For each unique publisher group: open one article page, run `classifyPage`; if `access` is false, trigger CAS once. **Reuse that authenticated tab for the whole group** — closing it drops the session.
+
+### Phase 2 — Per-group batch
+For each paper in the group, on the group's reused tab:
+1. Navigate to the article page (Alma resolver first: `https://tsinghua.alma.exlibrisgroup.com.cn/view/uresolver/86THU_INST/openurl?rft_id=info:doi/<DOI>&svc_dat=single_service`).
+2. `node scripts/probe.mjs --target <id> --name <publisher>` → confirm ready (`access`/`found`). If CAS expired mid-batch (every ~5 papers, re-run `classifyPage`), re-warm this group only and continue from the failed paper.
+3. **Download** using the publisher's strategy from the table above ("DOI prefix → publisher → download strategy"):
+   - **fetch publishers** (SAGE, T&F, Annual Reviews, IEEE): `node scripts/get-pdf.mjs --target <id> --publisher <name> [--arg doi=...] --out downloads/<paper>.pdf`
+   - **click-download publishers** (JSTOR, ProQuest, EBSCO, Nature): click the download button via CDP eval (see "Click-download pattern" above) → file lands in `~/Downloads` → `mv ~/Downloads/<file> downloads/<paper>.pdf`
+   - **navigate-download publishers** (Wiley): navigate browser to `pdfdirect?download=true` → `~/Downloads` → `mv`
+   - **ScienceDirect**: escalate to user for CAPTCHA, then click "View PDF"
+4. Verify: `python3 scripts/extract_pdf_text.py --pdf <out> --pages 5 --verify --doi <doi> --title "<title>"`.
+5. Append to `download-log.tsv`.
+
+### Phase 3 — Summary
+Report per-group totals (`total / success / failed`), failed papers with reasons, and any papers needing user intervention (`cas_waiting_user`, CAPTCHA, etc.).
+
+### DOI prefix → publisher → download strategy
+
+| Prefix | Publisher | Probe (`--name`) | **Download strategy** | Tool |
+|---|---|---|---|---|
+| `10.1016/` | ScienceDirect | `sciencedirect` | **click (human CAPTCHA)** | CDP click + human |
+| `10.1002/`, `10.1111/` | Wiley | `wiley` | **navigate-download** | CDP navigate to pdfdirect |
+| `10.1287/` | INFORMS (EBSCO) | `ebsco` | **click-download (2-step)** | CDP click in viewer |
+| `10.1037/` | APA (ProQuest) | `proquest` | **click-download** | CDP click "Download PDF" |
+| `10.1080/` | Taylor & Francis | `tandfonline` | **fetch** | `get-pdf.mjs` |
+| `10.1177/` | SAGE | `sage` | **fetch** | `get-pdf.mjs` |
+| `10.2307/` | JSTOR | `jstor` | **click-download** | CDP click T&C button |
+| `10.1146/` | Annual Reviews | `annualreviews` | **fetch (POST)** | `get-pdf.mjs` |
+| `10.1109/` | IEEE Xplore | `ieee` | **fetch (iframe src)** | `get-pdf.mjs` |
+| `10.1038/` | Nature | `nature` | **click-download** | CDP click "Download PDF" |
+
+The single-paper flow below ("Recommended Search Workflow" + "Per-Paper Workflow") remains valid as the fallback for one-off downloads.
+
 ## Recommended Search Workflow
 
 Prefer the library discovery route before direct publisher pages. It is more stable and less likely to trigger bot protection.
 
 1. Search by DOI or exact title in 水木学术搜索 (Primo):
    - `https://tsinghua-primo.hosted.exlibrisgroup.com.cn/primo-explore/search?vid=86THU&lang=zh_CN&query=any,contains,<URL-encoded DOI or title>`
+   - Prefer the **Alma resolver** (parametric URL, bypasses the SPA): `https://tsinghua.alma.exlibrisgroup.com.cn/view/uresolver/86THU_INST/openurl?rft_id=info:doi/<DOI>&svc_dat=single_service`
 2. Open Primo URLs through `/navigate` to preserve `#!` fragments.
-3. Read the result page with `/eval`.
-4. Extract links whose visible text or `aria-label` is:
-   - `PDF`
-   - `在线全文`
-   - `Full Text`
-   - `View PDF`
-   - publisher-specific full-text entries
-5. Prefer the result's `PDF` link when present.
-6. Open the PDF link in a new background tab through the CDP proxy.
-7. If the publisher shows a security challenge, ask the user to complete it manually.
-8. Once the PDF is visible in Chrome, use `scripts/browser_pdf_downloader.mjs` to save it from the authenticated browser context.
+3. Read the result page with the **primo probe** — never a raw `/eval` of page text:
+   ```bash
+   node scripts/probe.mjs --target <id> --name primo
+   ```
+   Returns `{ host, scope, hasResults, fulltextLinks[] }` with each link's `href` and `text` (the probe already matches `PDF` / `在线全文` / `Full Text` / `View PDF` / publisher full-text entries).
+4. From the probe's `fulltextLinks`, prefer the `PDF` entry when present; otherwise take `在线全文` / `Full Text`.
+5. Open the PDF link in a new background tab through the CDP proxy.
+6. If the publisher shows a security challenge, ask the user to complete it manually.
+7. Once the PDF is visible in Chrome, use `scripts/browser_pdf_downloader.mjs` to save it from the authenticated browser context.
 
 ## Per-Paper Workflow
 
@@ -188,11 +401,16 @@ For each paper:
     - If the source is inferred from DOI or publisher page, record the inferred source but do not treat it as verified access.
     - **Consult `lessons.md`** for the publisher-specific playbook before proceeding. Look up the section matching the publisher (see table in "Publisher-Specific Playbooks" above).
 3. Open the library route in Chrome through the CDP proxy.
-4. Classify the page state.
-   - Result with PDF/full-text link: continue.
-   - CAS/SSO: mark `cas_waiting_user` and pause for user action.
-   - CAPTCHA/Cloudflare/bot page: mark `publisher_verification_waiting_user` or `sciencedirect_robot_check`.
-   - No usable link: mark `primo_no_link` or `no_authorized_pdf_found`.
+4. Classify the page state with the **classifyPage probe** — never by reading page text into context:
+   ```bash
+   node scripts/probe.mjs --target <id> --name classifyPage
+   ```
+   Returns `{ stage, access, cloudflare, captcha, cas, host, pdfLinks[] }`. Map it to:
+   - `stage=article` + `pdfLinks` present: continue to download.
+   - `stage=cas` or `cas=true`: mark `cas_waiting_user` and pause for user action.
+   - `stage=captcha` or `cloudflare=true` with captcha: mark `publisher_verification_waiting_user` or `sciencedirect_robot_check`.
+   - `stage=cloudflare` (JS Challenge only): attempt FlareSolverr (see below).
+   - No usable link / `stage=search` stuck: mark `primo_no_link` or `no_authorized_pdf_found`.
 5. Download only after a PDF page or PDF response is visible from the authenticated browser context.
 6. Verify the file and update the simplified log.
 
@@ -219,16 +437,20 @@ When FlareSolverr is available, Cloudflare JS Challenge pages can be resolved wi
 
 ### Cloudflare Detection
 
-Before escalating to the user, check if the page is a Cloudflare JS Challenge (auto-resolvable) vs. something requiring human input:
+Before escalating to the user, check if the page is a Cloudflare JS Challenge (auto-resolvable) vs. something requiring human input. Use the `classifyPage` probe — it returns `cloudflare` and `captcha` booleans computed server-side, so no page text enters context:
 
-```javascript
-const pageText = await proxyEval(targetId, `document.body.innerText.slice(0, 500)`);
-const isCloudflareJS = /checking.*browser|checking if the site connection is secure|just a moment/i.test(pageText);
-const isCaptcha = /captcha|verify you are human|select all|are you a robot/i.test(pageText);
+```bash
+node scripts/probe.mjs --target <id> --name classifyPage
+# read .cloudflare and .captcha from the verdict
 ```
 
-- `isCloudflareJS && !isCaptcha` → attempt FlareSolverr resolution
-- `isCaptcha` → escalate to user (FlareSolverr's CAPTCHA solvers are broken per upstream docs)
+Equivalent predicates (already encoded in the probe — do not re-issue as raw `/eval`):
+
+- `cloudflare` ← `/checking your browser|just a moment|checking if the site connection is secure|正在检查浏览器|正在进行安全验证/i`
+- `captcha` ← `/captcha|verify you are human|select all images|are you a robot|turnstile/i`
+
+- `cloudflare && !captcha` → attempt FlareSolverr resolution
+- `captcha` → escalate to user (FlareSolverr's CAPTCHA solvers are broken per upstream docs)
 
 ### Mode A: Cookie Injection (preferred)
 
@@ -380,9 +602,37 @@ When a paper reaches a CAS or institutional SSO page:
 9. If resolved, download and verify the PDF, then update `download-log.tsv` with `download_success=yes`.
 10. If it loops back to CAS after a completed user login, record `failed_after_retry` with the observed reason and move on.
 
+## Mid-Session Recovery
+
+If a publisher page unexpectedly shows Cloudflare during per-paper downloads:
+
+1. Re-run section 1.3 for that specific publisher only (single FlareSolverr call → inject cookie).
+2. Refresh the blocked tab.
+3. If `cf_clearance` injection fails (UA mismatch), fall back to full FlareSolverr content extraction (Mode B).
+4. If Cloudflare immediately reappears, escalate to user and log `cloudflare_flaresolverr_failed`.
+
+CAS sessions last hours — they rarely need recovery. If CAS does expire, re-run section 1.4 for the affected publisher.
+
 ## Download PDF From Browser Context
 
-Use the bundled script when a PDF URL opens in Chrome but direct download returns 403, 401, Cloudflare HTML, or a login page.
+### click-download (primary, 5/8 publishers)
+
+For JSTOR, ProQuest, EBSCO, Wiley, and Nature: click the publisher's download button via CDP → browser triggers native download → file lands in `~/Downloads` → `mv` to `downloads/`. See "Download Strategy per Publisher" above for exact per-publisher steps.
+
+This approach is preferred because the browser handles cookies, Cloudflare, redirects, and session management exactly as a human user would — no fetch/CORS/interstitial issues.
+
+### fetch() via get-pdf.mjs (SAGE, T&F, Annual Reviews, IEEE only)
+
+For publishers where the server directly returns `application/pdf` bytes:
+
+```bash
+node scripts/get-pdf.mjs --target <id> --publisher <name> [--arg doi=...] --out downloads/paper.pdf
+node scripts/get-pdf.mjs --list          # enumerate action modules
+```
+
+### Legacy fallback: browser_pdf_downloader.mjs
+
+Use only when a direct PDF URL is already open in Chrome and a plain `fetch(location.href, {credentials:"include"})` is enough:
 
 ```bash
 node scripts/browser_pdf_downloader.mjs \
@@ -390,7 +640,7 @@ node scripts/browser_pdf_downloader.mjs \
   --out "downloads/paper.pdf"
 ```
 
-The script:
+The legacy script:
 
 - Opens the URL in the user's controlled Chrome session unless `--target` is provided.
 - Runs `fetch(location.href, { credentials: "include" })` inside the page.

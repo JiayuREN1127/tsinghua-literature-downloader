@@ -4,7 +4,7 @@
 
 Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader) by [@baihe26](https://github.com/baihe26) (浙江大学版), re-engineered for Tsinghua University Library, 水木学术搜索, and institutional access pathways.
 
-## 工作流
+## Workflow
 
 ```
 你的 Chrome (已登录清华) ← CDP 代理 ← AI Agent
@@ -14,66 +14,70 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
   [FlareSolverr, 可选] → 自动清除 Cloudflare JS Challenge
 ```
 
-## 前置条件
+## Prerequisites
 
 - Chrome 浏览器（已登录 水木学术搜索）
 - Chrome 远程调试已启用
 - Node.js 22+
 - FlareSolverr（可选，用于自动清除 Cloudflare）
 
-## 目录结构（三个版本，清晰隔离）
+## Directory Structure (four versions, clearly isolated)
 
 ```
-├── SKILL-v1/   ← 统一版（unified, 逐篇下载）           — legacy
-├── SKILL-v2/   ← 分组版（grouped, 按出版社批量下载）    — legacy
-├── SKILL-v3/   ← token-disciplined（探针库，省 token）  — CANONICAL，正在实测
-├── TEST/        ← 测试用，安装技能时不需要
-├── sync.sh      ← 同步三个版本到各 AI 工具目录
+├── SKILL-v1/     ← 统一版（unified, per-paper download）           — legacy, frozen
+├── SKILL-v2/     ← 分组版（grouped, per-publisher batch）          — legacy, frozen
+├── SKILL-v3/     ← token-disciplined（probe + action libraries）   — legacy, frozen
+├── SKILL-v3.1/   ← click-first（click-download primary strategy）  — CANONICAL ✅
+├── TEST/          ← 测试清单和实测报告
+├── sync.sh        ← 同步当前 canonical 版本到各 AI 工具目录
 └── README.md
 ```
 
-| 版本 | 特点 | 状态 |
-|---|---|---|
-| `SKILL-v1` | 统一版，逐篇独立下载 | legacy，当前默认安装目标 |
-| `SKILL-v2` | 分组版，按 publisher 批量下载 | legacy |
-| `SKILL-v3` | 探针库 + Token Discipline 硬规则，`/eval` 只返回紧凑判定 | **canonical**，实测通过后切换为默认 |
+## Version History
 
-### V1 / V2 / V3 差异（simple English）
+| Version | Tag | Directory | Key Feature | Status |
+|---------|-----|-----------|-------------|--------|
+| v1.0 | `v1.0` | `SKILL-v1/` | 统一版，逐篇独立下载；原始 HTML 进 context（高 token） | frozen |
+| v2.0 | `v2.0` | `SKILL-v2/` | 分组版，按 publisher 批量下载 + FlareSolverr 预热 | frozen |
+| v3.0 | `v3.0` | `SKILL-v3/` | Token Discipline 硬规则 + 探针库（token 降 1000×） | frozen |
+| v3.1 | `v3.1` | `SKILL-v3.1/` | **click-first 策略**（5/8 用浏览器原生下载，成功率 7/8） | **canonical** |
 
-One-line idea: **V1** = simple but slow and costly. **V2** = V1 + group papers by publisher. **V3** = V2's grouping + low memory + safe + self-checking.
+### v1 → v2 → v3 → v3.1 Evolution
 
-| Point | V1 (unified) | V2 (grouped) | V3 (token-saved) |
-|---|---|---|---|
-| Download style | one paper at a time | papers grouped by publisher; one login per group | grouped like V2 |
-| AI memory (token) use | high | high (same as V1) | low |
-| How it reads a page | reads the whole page into memory | same as V1 | a small "probe" sends back only a short answer |
-| How it gets the PDF | one simple way for all sites | same as V1 | each publisher has a small "action" that knows the right way (fetch / click / new tab / in-page viewer) |
-| Lessons (playbook) file | full, kept inside the folder | a short link to V1's file (breaks if copied alone) | full, kept inside the folder |
-| Broken half-file risk | a half file can stay and look done | same as V1 | half files are deleted; they never get the final name |
-| Short network error | fails right away | same as V1 | tries one more time |
-| File check after download | loose (just "title is in text") | same as V1 | strict (DOI found, or strong title match) |
-| Test tool | none | none | a small test list ("canary") checks each publisher still works |
-| Shared code | same code copied in many files | same as V1 | one shared code file |
-| Works on its own | yes | no (needs V1's folder) | yes |
-| Status | old; still the live one now | old | new; main one after live testing |
+| Dimension | v1.0 | v2.0 | v3.0 | v3.1 |
+|-----------|------|------|------|------|
+| **Page reading** | Raw `innerHTML`/`innerText` (100-500KB/page) | Same as v1 | Probes ~200B/call, DOM filtered server-side | Same as v3 |
+| **Token per paper** | ~250K (reads 2-3 raw HTML pages) | ~200K (FlareSolverr reduces re-reads) | ~150 (compact probe verdicts) | ~300 (v3 probes + 3-4 click interactions) |
+| **Download method** | All `fetch()` chunk transfer | All `fetch()` chunk transfer | All `fetch()` via `get-pdf.mjs` | **5/8 click** native + 2/8 fetch + 1/8 human |
+| **Download speed** | Slow (chunk transfer, 4MB ≈ 20s) | Slow | Slow | **Fast** (click native stream, 4MB ≈ 3s) |
+| **Success rate** | 2/8 | 3/8 (+Wiley via FlareSolverr) | 2/8 (probes ≠ download fix) | **7/8** |
 
-## 快速开始
+## Quick Start
 
 ```bash
-# canonical 版本（推荐）
+# Canonical version (recommended)
+cd SKILL-v3.1 && node start.js
+
+# Or any frozen legacy version
 cd SKILL-v3 && node start.js
-
-# 或 legacy 统一版
-cd SKILL-v1 && node start.js
 ```
 
-详见对应 `SKILL-vX/` 目录下的 `README.md` 和 `SKILL.md`。
+See each `SKILL-vX/` directory for its own `README.md` and `SKILL.md`.
 
-## 同步到 AI 工具
+## Sync to AI Tools
 
 ```bash
-./sync.sh          # 预览
-./sync.sh --apply  # 实际复制
+./sync.sh          # dry-run preview
+./sync.sh --apply  # actually copy SKILL-v3.1 to default skill paths
 ```
 
-`sync.sh` 当前把 `SKILL-v1` 装到默认路径、`SKILL-v2` → `-grouped`、`SKILL-v3` → `-v3` 后缀（非破坏性）。v3 实测通过后，按 `sync.sh` 文件头注释切换为默认安装目标。
+`sync.sh` installs `SKILL-v3.1/` (canonical) to the default skill path (e.g. `~/.claude/skills/tsinghua-literature-downloader`). Legacy versions can be synced manually.
+
+## GitHub Releases
+
+See [Releases](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases) for tagged versions with changelogs:
+
+- [`v3.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.1) — click-first download strategy (current)
+- [`v3.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.0) — token-disciplined probe/action libraries
+- [`v2.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v2.0) — grouped download + FlareSolverr warmup
+- [`v1.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v1.0) — original unified skill

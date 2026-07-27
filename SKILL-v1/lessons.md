@@ -26,21 +26,7 @@
 
 ---
 
-## FlareSolverr 两模式工作流 (v2.0)
-
-v2.0 采用**预热-下载架构**：Phase 1 一次性清除所有 Cloudflare 保护域的 `cf_clearance` + 触发 CAS，Phase 2 逐篇快速下载。此节记录 FlareSolverr 的底层技术细节。
-
-### 预热目标域
-
-需要预清除 Cloudflare 的出版商（按 DOI 前缀识别）：
-
-| 出版商 | DOI 前缀 | cf_clearance 域 |
-|--------|---------|----------------|
-| ScienceDirect | `10.1016/` | `.sciencedirect.com` |
-| Wiley | `10.1002/`, `10.1111/` | `.onlinelibrary.wiley.com` |
-| Taylor & Francis | `10.1080/` | `.tandfonline.com` |
-
-无需预清除（走 CAS 直连）：ProQuest、EBSCO、JSTOR、SAGE（中国镜像）。
+## FlareSolverr 两模式工作流
 
 当出版商页面（ScienceDirect、Taylor & Francis、SAGE 镜像等）显示 Cloudflare JS Challenge 时，使用 FlareSolverr (`localhost:8191`) 解析。两个模式依次尝试：
 
@@ -100,7 +86,7 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 ### CAS 会话跨出版社共享
 
 一次 CAS（Shibboleth）认证后，同一浏览器会话中以下出版社均可复用：
-- ScienceDirect、Wiley、Taylor & Francis、JSTOR、SAGE、ProQuest、Annual Reviews、**Nature / Springer Nature**
+- ScienceDirect、Wiley、Taylor & Francis、JSTOR、SAGE、ProQuest、Annual Reviews
 - 超时机制：数小时后过期；超时后重新登录即可
 
 ### PDF 分块下载模式
@@ -349,38 +335,3 @@ APA 期刊通过 ProQuest（APA PsycArticles）访问，提供两条路径：
 2. **IEEE PDF 在 iframe 中**：stamp.jsp 将 PDF 嵌入 `<iframe src="getPDF.jsp?...">`。fetch 该 src 即可获得 PDF，无需点击下载按钮。
 
 3. **URL 模式**：`https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber=<arnumber>&ref=...`。
-
----
-
-## Nature / Springer Nature 流程（10.1038/）
-
-### 标准步骤
-
-| # | 操作 | 说明 |
-|---|------|------|
-| 1 | 导航到文章页 | `https://www.nature.com/articles/<DOI-suffix>`（如 `d41586-026-01794-0`） |
-| 2 | 检查页面是否显示 "full access via your institution" | 若显示，已认证；否则需要登录 |
-| 3 | 若未登录：点击页眉 "Log in" → 跳转 `idp.nature.com` | 在登录页选择 "Access through your institution" → 搜索 Tsinghua → CAS 完成 |
-| 4 | 找到可见的 "Download PDF" 按钮（页面通常有 3 个，仅主内容区的可见） | 用 `getBoundingClientRect()` 筛选 `visible: true` 的那个 |
-| 5 | 用 JS `.click()` 点击可见按钮（不要用 `/clickAt`） | 触发 Chrome 原生下载，文件保存到 Downloads |
-| 6 | 验证下载文件：`%PDF` 头部、page count > 0、文本含文章标题 | 用 `extract_pdf_text.py` |
-
-### 关键教训
-
-1. **必须先登录 Springer Nature**：未登录状态下点击 "Download PDF"，Nature 返回的是 **HTML 文件（~221KB，content-type: text/html）**，而不是 PDF。文件扩展名也是 `.html`，但很容易被误认为下载成功。**验证 PDF 头部 `%PDF` 是必须步骤**。
-
-2. **登录状态判断**：页面文本中出现 "full access to this article via your institution" 即代表已认证。不要只看页眉的 "Log in" 按钮是否存在——它可能始终存在但功能已激活。
-
-3. **多个 Download PDF 按钮**：页面通常有 3 个 `a.c-pdf-download__link`：2 个隐藏（sticky header）+ 1 个可见（主内容区）。CDP `/clickAt` 对隐藏元素返回坐标 (0,0)，无法触发下载。**用 JS 获取所有按钮 → 筛选 `getBoundingClientRect().width > 0` 的可见按钮 → 直接 `.click()`**。
-
-4. **`data-readcube-pdf-url="true"` 属性**：Nature 的 PDF 下载由 ReadCube 提供底层支持，该属性标记了按钮。但不需要手动构造 ReadCube URL——点击按钮即可触发原生下载。
-
-5. **`d41586-*` 系列（Careers/News/Commentary）**：这类文章是 Nature 网页专属内容，印刷版没有独立 PDF。**但登录后仍可下载到 PDF**（内容是文章的排版版本，2 页左右）。未登录时只会得到 HTML。
-
-6. **Alma resolver 路径也指向 Nature**：通过 Alma 的 "SpringerLink Journals - AutoHoldings" 入口最终也重定向到 `nature.com/articles/...`，与直接 DOI 访问相同。CAS 认证状态在 `nature.com` 域内共享。
-
-### URL 模式
-
-- 文章页：`https://www.nature.com/articles/<suffix>`（如 `d41586-026-01794-0`）
-- PDF 下载：通过点击 "Download PDF" 按钮触发，URL 为 `https://www.nature.com/articles/<suffix>.pdf`
-- 机构登录：页眉 "Log in" → `https://idp.nature.com/auth/personal/springernature?redirect_uri=<article-url>`，再选 "Access through your institution"

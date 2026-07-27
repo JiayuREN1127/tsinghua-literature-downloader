@@ -32,18 +32,18 @@
 
 探针（只读）回答"PDF 在哪 / 是否已认证"；动作（`actions/<name>.mjs`，通过 `scripts/get-pdf.mjs --publisher <name>` 调用）回答"怎么把字节抓下来"。每个动作返回一个紧凑 **fetch-plan**，由通用 runner 执行。各出版社的取数方式差异（credentials/POST/新标签/点击/PDF.js）都封装在这里。
 
-| 出版社 | 动作名 | 动作文件 | fetch 模式 | last_verified |
+| 出版社 | 动作名 | 动作文件 | **下载策略 (v3.1)** | last_verified |
 |---|---|---|---|---|
-| ScienceDirect | `sciencedirect` | `actions/sciencedirect.mjs` | newtab-fetch（预签名 S3 新标签） | pending |
-| EBSCO / INFORMS | `ebsco` | `actions/ebsco.mjs` | fetch（CDS，**不带 credentials**） | pending |
-| Wiley | `wiley` | `actions/wiley.mjs` | fetch（pdfdirect，同源） | pending |
-| ProQuest / APA | `proquest` | `actions/proquest.mjs` | pdfjs（页内 viewer） | pending |
-| SAGE | `sage` | `actions/sage.mjs` | fetch（仅中国镜像） | pending |
-| Taylor & Francis | `tandfonline` | `actions/tandfonline.mjs` | fetch | pending |
-| JSTOR | `jstor` | `actions/jstor.mjs` | fetch | pending |
-| Annual Reviews | `annualreviews` | `actions/annualreviews.mjs` | fetch（**POST**） | pending |
-| IEEE Xplore | `ieee` | `actions/ieee.mjs` | fetch（iframe src，需先在 stamp.jsp） | pending |
-| Nature | `nature` | `actions/nature.mjs` | click-download（原生下载到磁盘） | pending |
+| ScienceDirect | `sciencedirect` | `actions/sciencedirect.mjs` | **click (human CAPTCHA)** — CDP 触发反爬，需人工过验证后 click "View PDF" | pending |
+| EBSCO / INFORMS | `ebsco` | `actions/ebsco.mjs` | **click-download (2-step)** — 工具栏"下载"→modal `bulk-download-modal-download-button` | pending |
+| Wiley | `wiley` | `actions/wiley.mjs` | **navigate-download** — 浏览器导航 `pdfdirect?download=true`（fetch API 被 Cloudflare 拦截 403） | pending |
+| ProQuest / APA | `proquest` | `actions/proquest.mjs` | **click-download** — 点击 "Download PDF" → media.proquest.com | pending |
+| SAGE | `sage` | `actions/sage.mjs` | **fetch** — 仅中国镜像，从 RSC script 提取 PDF 路径 | pending |
+| Taylor & Francis | `tandfonline` | `actions/tandfonline.mjs` | **fetch** — SSO 后 fetch `/doi/pdf/<DOI>?download=true` | pending |
+| JSTOR | `jstor` | `actions/jstor.mjs` | **click-download** — T&C 页 "Accept and download" 按钮触发原生下载 | pending |
+| Annual Reviews | `annualreviews` | `actions/annualreviews.mjs` | **fetch（POST）** | pending |
+| IEEE Xplore | `ieee` | `actions/ieee.mjs` | **fetch（iframe src，需先在 stamp.jsp）** | pending |
+| Nature | `nature` | `actions/nature.mjs` | **click-download** — 点击可见 "Download PDF" 按钮触发原生下载 | pending |
 
 **维护约定（同探针）：** 动作实测成功后更新 `last_verified`；改版失效则更新动作 + playbook 并重置日期。canary 目前只校验探针；动作的真下载校验需在有 Chrome 会话时手动 `get-pdf.mjs` 跑一遍 SEEDED DOI。
 
@@ -133,6 +133,21 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 
 ## 全局关键经验（跨出版社）
 
+### 下载策略：click-first（v3.1 实测结论）
+
+2026-07-27 对 8 个数据库的实测确立了 **click-download 优先** 原则：
+
+| 策略 | 数据库 | 数量 |
+|------|--------|:----:|
+| **fetch()** | SAGE、T&F | 2/8 |
+| **click-download / navigate-download** | JSTOR、ProQuest、Wiley、EBSCO×2 | 5/8 |
+| **需人工过 CAPTCHA** | ScienceDirect | 1/8 |
+
+- fetch() 仅在 SAGE 和 T&F 上可靠（服务端直接返回 `application/pdf`）
+- 其余库因 T&C 拦截页（JSTOR）、Cloudflare（Wiley）、PDF.js viewer（ProQuest/EBSCO）、动态签名 URL（ScienceDirect）等原因，fetch 失败
+- click-download 利用浏览器原生处理 cookie/重定向/Cloudflare，与人类操作一致，更可靠
+- Publisher 的 PDF viewer 大多是**自定义 PDF.js 组件（DOM 元素）**，下载按钮可被 CDP 点击
+
 ### Primo（水木搜索）
 
 - **旧 URL 已废弃**：`primo.lib.tsinghua.edu.cn` 已停止服务（DNS NXDOMAIN），必须使用新地址：
@@ -172,25 +187,27 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 
 | # | 操作 | 说明 |
 |---|------|------|
-| 1 | Alma resolver 或 Primo 搜索 DOI → 找到 "阅读全文" 链接 | Primo URL：`/primo-explore/search?vid=86THU&query=any,contains,<DOI>` |
-| 2 | 点击 "阅读全文" → ScienceDirect 文章页 | 链接直接指向 `sciencedirect.com/science/article/pii/<PII>` |
-| 3 | 点击 "Access through Tsinghua University"（若需要） | 触发 CAS Shibboleth 认证；若会话已缓存则自动完成 |
+| 1 | Alma resolver 或 Primo 搜索 DOI → 找到 "阅读全文" 链接 | |
+| 2 | 点击 "阅读全文" → ScienceDirect 文章页 | 可能显示 "请稍候…" 反爬中间页 |
+| 3 | 若显示 "Access through Tsinghua University"，点击触发 CAS | CAS session 跨库共享 |
 | 4 | 页面显示 "Brought to you by: Tsinghua University" | 授权成功 |
-| 5 | 点击 "View PDF" 链接 | 需匹配 PII 选择正确的链接（排除引用区其他文章的 PDF） |
-| 6 | 新标签打开预签名 S3 URL | URL 含 `X-Amz-Expires=300`（5 分钟有效） |
-| 7 | 从新标签页 `fetch(location.href, { credentials: "include" })` → 分块写入磁盘 | 新标签页可能触发 Cloudflare captcha，需手动验证 |
+| 5 | **⚠️ CDP 触发 CAPTCHA**（"Are you a robot?"）→ **人工在 Chrome 中完成验证** | FlareSolverr 无法解决（已实测：45s 超时，0 字节返回） |
+| 6 | 人工过 CAPTCHA 后，点击 "View PDF" | 开新 tab `pdf.sciencedirectassets.com`（S3 presigned URL） |
+| 7 | 人工下载或从新 tab 获取 PDF | S3 URL 5 分钟过期 |
 
 ### 关键教训
 
-1. **PII 匹配选择 View PDF 链接**：SD 页面底部引用区有多个其他文章的 View PDF 链接。用 `href.includes("<PII>")`（如 `S0001879110002083`）精确匹配目标文章的 PDF 链接。
+1. **CDP 必触发 CAPTCHA**：ScienceDirect 的反爬系统（`crasolve`）检测到 CDP 自动化后显示 "Are you a robot?" CAPTCHA。这是**自动化检测问题**，不是 fetch vs click 问题。**必须人工介入。**
 
-2. **预签名 URL 5 分钟过期**：`X-Amz-Expires=300`。过期后需回到文章页重新点击 View PDF 获取新签名。
+2. **FlareSolverr 无效**：已实测，FlareSolverr 对 ScienceDirect 的 CAPTCHA 完全卡死（45 秒超时无响应）。FlareSolverr 只能解 Cloudflare JS Challenge，不能解 ScienceDirect 的 crasolve CAPTCHA。
 
-3. **Cloudflare captcha**：新标签页打开预签名 S3 URL 时可能触发反爬验证。需手动完成 captcha 后再 fetch。
+3. **fetch pdfft 返回 HTML**：即使在认证状态下，`fetch(pdfft URL)` 也返回 `text/html`（viewer 页），不是 PDF。
 
-4. **跨域限制**：`pdf.sciencedirectassets.com` 与 SD 域名不同，从 SD 页面 fetch 该 URL 会因 CORS 失败。必须在预签名 URL 所在的标签页内 fetch。
+4. **PII 匹配选择 View PDF 链接**：SD 页面底部引用区有多个其他文章的 View PDF 链接。用 `href.includes("<PII>")` 精确匹配。
 
-5. **CAS 会话缓存**：一次 CAS 登录后，同一浏览器会话中访问其他 SD 文章无需重复登录。
+5. **预签名 URL 5 分钟过期**：`X-Amz-Expires=300`。过期后需回到文章页重新点击 View PDF。
+
+6. **CAS 会话缓存**：一次 CAS 登录后，同一浏览器会话中访问其他 SD 文章无需重复登录（但 CAPTCHA 可能再次触发）。
 
 ---
 
@@ -201,29 +218,22 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 | # | 操作 | 说明 |
 |---|------|------|
 | 1 | Alma/Primo 搜索 DOI 或标题 → 无结果时直接访问 `research.ebsco.com` | INFORMS 期刊在 Primo 无记录 |
-| 2 | 在 EBSCO 内搜索 → 找到记录 | "立即获取 (PDF)" 按钮可进入 viewer |
-| 3 | 点击 "立即获取 (PDF)" → EBSCO 内置 PDF viewer | 页面显示 PDF 内容和工具栏 |
-| 4 | 点击 viewer 工具栏 `aria-label="下载"` → 弹出下载模态框 | 模态框选项：全文/仅元数据；PDF 格式 |
-| 5 | 点击模态框 `data-auto="bulk-download-modal-download-button"` | 触发后端 API 调用 |
-| 6 | 自动获取 CDS 签名 URL 并直接 fetch | 无需新标签页，直接通过 eval 下载 |
+| 2 | 在 EBSCO 内搜索 → 找到记录 → 进入文章详情页或 PDF viewer | viewer 是**自定义 PDF.js 组件**（DOM 元素） |
+| 3 | 点击 viewer 工具栏 `button[data-auto=tool-button][aria-label=下载]` | 弹出下载模态框 |
+| 4 | 点击模态框 `button[data-auto=bulk-download-modal-download-button]` | **浏览器原生下载**，文件直落 `~/Downloads` |
+| 5 | `mv ~/Downloads/EBSCO-FullText-*.pdf downloads/<paper>.pdf` | 文件名格式 `EBSCO-FullText-<date>.pdf` |
 
 ### 关键教训
 
-1. **Primo 无记录时走 EBSCO**：INFORMS（美国运筹学与管理科学学会）期刊收录在 EBSCO Business Source Complete 中，不在 Primo 直接收录。
+1. **click-download 两步完成**：viewer 工具栏的 "下载" 按钮（DOM 元素）打开 modal，modal 内的 `bulk-download-modal-download-button` 触发原生下载。**不需要** CDS observe + fetch(omit) 那套复杂逻辑。
 
-2. **CDS 签名 URL 的发现**：点击下载按钮后，通过 `performance.getEntriesByType("resource")` 监测到两次请求：
-   - `/api/researcher-edge-aggregator/v1/records/{id}/fulltext/pdf?intent=download` → 返回 JSON `{"url": "..."}`
-   - `content.ebscohost.com/cds/retrieve?content=...` → 返回 PDF 二进制数据
+2. **viewer 是自定义 PDF.js**（不是 Chrome 内置 viewer）：有 `data-auto="pdf-viewer"`、`viewer-toolbar` 等 DOM 元素。所有工具栏按钮都是可点击的 DOM，CDP 完全可控。
 
-3. **致命陷阱：fetch 不带 credentials**：CDS URL 使用 URL 内嵌签名认证（`?content=AQIC...`），**不需要也不应该**携带 `credentials: "include"`。携带 cookies 会导致 CORS 预检（OPTIONS）失败，返回 `Failed to fetch`。**去掉 `credentials: "include"` 后，fetch 直接返回 `application/pdf`**。
+3. **Cookie 同意横幅可能阻挡**：首次进入 viewer 页面时可能出现 OneTrust cookie 同意横幅。先点击 "接受" 关闭它，再操作工具栏按钮。
 
-4. **CDS URL 一次性使用**：每个签名 URL 仅对一次请求有效；第二次相同 URL 的请求会失败。
+4. ~~**CDS 签名 URL**~~（已弃用）：旧方案通过 `performance.getEntriesByType("resource")` 观察 CDS URL 再 fetch(omit)。两步 click 更简单可靠，不再推荐旧方案。
 
-5. **下载 API 端点**：可以直接通过以下方式获取 CDS URL：
-   ```
-   GET /api/researcher-edge-aggregator/v1/records/{id}/fulltext/pdf?sourceRecordId={id}&opid={opid}&intent=view&lang=en-US
-   ```
-   不需要走浏览器下载按钮。得到的 CDS URL 直接用 `fetch(url)`（无 credentials）即可下载 PDF。
+5. **Primo 无记录时走 EBSCO**：INFORMS（美国运筹学与管理科学学会）期刊收录在 EBSCO Business Source Complete 中，不在 Primo 直接收录。
 
 ---
 
@@ -234,25 +244,25 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 | # | 操作 | 说明 |
 |---|------|------|
 | 1 | Alma/Primo 搜索（DOI + 标题）→ 无记录时走出版社直连 | 大量 Wiley 文章在 Primo "全部资源" 中未找到 |
-| 2 | `doi.org/<DOI>` 重定向到 `onlinelibrary.wiley.com` → 文章页 | 页面上方显示 "Login / Register" |
-| 3 | 点击 "Login / Register" → "Institutional login" → 搜索 "Tsinghua" → 选择 "Tsinghua University" | SAML 重定向至 CAS；若会话已缓存则自动跳回 |
-| 4 | 页面顶部显示 "Access through Tsinghua University" | 授权成功 |
-| 5 | 点击文章标题下方 "Full Access" 链接 | 进入含 `?download=true` 的 PDF 直链 |
-| 6 | 从任一页面 `fetch("/doi/pdfdirect/...?download=true")` → PDF 二进制 | 无需额外认证 |
+| 2 | 通过 Alma resolver 或 Shibboleth 认证 | CAS session 跨库共享 |
+| 3 | 页面顶部显示 "Access through Tsinghua University" 或 "Full Access" | 授权成功 |
+| 4 | 浏览器**导航**到 `pdfdirect?download=true` | `POST /navigate` → `isDownload:true` |
+| 5 | **浏览器原生下载**，文件直落 `~/Downloads` | |
+| 6 | `mv ~/Downloads/<file> downloads/<paper>.pdf` | |
 
 ### 关键教训
 
-1. **`pdfdirect` vs `pdf`**：`/doi/pdfdirect/<DOI>` 是带机构授权的直链；`/doi/pdf/<DOI>` 可能返回受限版本。参数 `?download=true` 确保返回完整的 PDF 二进制数据。
+1. **fetch API 被 Cloudflare 拦截**：`fetch("/doi/pdfdirect/<DOI>?download=true")` → **403 Forbidden**。但浏览器**导航**到同一 URL 带完整 Cloudflare cookie，正常通过（`isDownload:true`）。**用 navigate-download，不用 fetch。**
 
-2. **`/eval` 中的 fetch 自动携带 cookies**：从已认证的页面执行 `fetch("/doi/pdfdirect/...")` 自动携带当前域名的认证 cookies，无需手动指定 `credentials`。
+2. **页面 "Download PDF" 按钮指向错误 URL**：按钮 href 为 `/doi/pdf/<DOI>`（返回 HTML 文章页），不是 `/doi/pdfdirect/<DOI>?download=true`。必须手动构造 pdfdirect URL 导航。
+
+3. **`pdfdirect` vs `pdf`**：`/doi/pdfdirect/<DOI>?download=true` 是正确的下载 URL；`/doi/pdf/<DOI>` 返回 HTML。
 
 ### Wiley 子域名陷阱
 
 部分 Wiley 期刊托管在独立子域名上（如 `iaap-journals.onlinelibrary.wiley.com`），子域名 cookie 不与主站共享。
 
-- **问题**：从 `onlinelibrary.wiley.com` 主站 fetch `pdfdirect` URL 时，子域名文章会返回空结果
-- **解决方案**：导航到实际文章页 → 检查 `location.origin` → 从该 origin 发起 `fetch(origin + "/doi/pdfdirect/<DOI>?download=true")`
-- **判断**：文章页上显示 "Full Access" 即代表已认证
+- **解决方案**：导航到实际文章页 → 检查 `location.origin` → 构造 `<origin>/doi/pdfdirect/<DOI>?download=true` 导航。
 
 ---
 
@@ -281,17 +291,11 @@ APA 期刊通过 ProQuest（APA PsycArticles）访问，提供两条路径：
 
 ### 关键教训
 
-1. **Alma resolver 是第一选择**：大量 APA 文章在 Primo 中无记录，Alma resolver 总能正确解析出全文链接，且可参数化构造 URL。
+1. **Alma resolver 是第一选择**：大量 APA 文章在 Primo 中无记录，Alma resolver 总能正确解析出全文链接。
 
-2. **ProQuest 比 EBSCO 更可靠**：所有 `10.1037/` 文章通过 ProQuest（APA PsycArticles）下载链路更稳定。
+2. **click-download 优先**：文章页 "Download PDF" 按钮指向 `media.proquest.com` 媒体 URL，点击后触发浏览器原生下载。比 PDF.js viewer 读取更简单可靠。
 
-3. **不同 docview ID 对应不同订阅库**：`docview/1702115564` 可能显示 "Document Unavailable"，但 `docview/1687049206` 有全文。**必须通过 Alma resolver 或站内搜索动态获取 docview ID，不要硬编码**。
-
-4. **PDF 提取走 PDF.js**：ProQuest 用 PDF.js viewer 在 iframe 中渲染 PDF。`PDFViewerApplication` 全局对象暴露在 iframe 的 contentWindow 中，调用 `pdfDocument.getData()` 可直接拿到 PDF 二进制。
-
-5. **同一个 ProQuest Tab 可复用**：认证后的 ProQuest session 可跨文章复用，无需每篇重新认证。
-
-6. **ProQuest 的接入路径**：ProQuest 首页 → Shibboleth login → 选 Tsinghua → CAS → 回 ProQuest。CAS session 复用。
+3. **PDF.js viewer 仍可用**：`PDFViewerApplication.pdfDocument.getData()` 可从 iframe 中提取 PDF 二进制，作为 click-download 的备选方案。
 
 ---
 
@@ -339,12 +343,17 @@ APA 期刊通过 ProQuest（APA PsycArticles）访问，提供两条路径：
 |---|------|------|
 | 1 | Alma/Primo → `doi.org/10.2307/...` → JSTOR | 若已有 CAS 会话则自动登录 |
 | 2 | 页面显示 "Access provided by 清华大学" | 认证成功 |
-| 3 | `fetch("/stable/pdf/{jstorID}.pdf", {credentials:"include"})` | 直接返回 PDF |
+| 3 | 导航到 `/stable/pdf/{jstorID}.pdf` → 触发 **T&C 拦截页** | URL 变为 `/tc/accept?origin=...` |
+| 4 | 点击 `<terms-and-conditions-pharos-button>` shadow DOM 内的 button | `el.shadowRoot.querySelector("button").click()` |
+| 5 | **浏览器原生下载**，文件直落 `~/Downloads` | 文件名如 `Louis-SurpriseSenseMaking-1980.pdf` |
+| 6 | `mv ~/Downloads/<file> downloads/<paper>.pdf` | 移动到目标目录 |
 
 ### 关键教训
 
-1. **PDF URL 模式固定**：`/stable/pdf/{jstorID}.pdf`。
-2. **大文件注意分块**：4.2MB 需 105 个 chunk（每个 40KB），耗时较长但可靠。
+1. **fetch 已失效**：JSTOR 新增了 T&C（Terms and Conditions）拦截页。`fetch("/stable/pdf/{id}.pdf")` 返回 `text/html`（T&C 页面），不是 PDF。**必须用 click-download**。
+2. **T&C 按钮是自定义 web component**：`<terms-and-conditions-pharos-button>` 有 shadow DOM，需 `el.shadowRoot.querySelector("button").click()` 而非直接 click。
+3. **点击即下载**："Accept and download" 按钮同时完成接受条款 + 触发浏览器原生下载，文件直落 `~/Downloads`。
+4. **PDF URL 模式仍为** `/stable/pdf/{jstorID}.pdf`，但在 T&C 接受前不可直接 fetch。
 
 ---
 

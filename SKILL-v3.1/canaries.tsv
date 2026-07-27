@@ -1,0 +1,28 @@
+# Canary definitions for probe regression (row 6).
+# One known-good paper per publisher. Populate each DOI from a paper that has
+# previously downloaded successfully through Tsinghua access, then run:
+#   node scripts/run-canary.mjs            # run all
+#   node scripts/run-canary.mjs --only sciencedirect
+#   node scripts/run-canary.mjs --mark     # print sed hints to set last_verified
+#
+# Columns (TAB-separated):
+#   publisher       human label
+#   probe           probe name in probes/index.mjs
+#   doi             DOI to resolve via Alma resolver
+#   args            probe args as key=val;key=val  (leave empty if none)
+#   expect_field    field in the probe result JSON to assert on
+#   expect_contains substring that expect_field must contain ("true"/"false" for booleans, "*" for non-empty)
+#   notes
+#
+# Status legend: SEEDED = placeholder, verify on first live run and replace DOI if needed.
+publisher	probe	doi	args	expect_field	expect_contains	notes
+ScienceDirect	sciencedirect	10.1016/j.jvb.2010.12.007		expect_field=*.viewPdfLinks#len>0	must have View PDF candidate	SEEDED — Saks 2011 (test_saks_2011.pdf)
+EBSCO	ebsco	10.1287/mnsc.1050.0470		pdfButton	true	SEEDED — INFORMS via EBSCO Business Source Complete
+Wiley	wiley	10.1002/job.748	doi=10.1002/job.748	accessThrough	true	SEEDED — check pdfdirect origin
+ProQuest	proquest	10.1037/0021-9010.93.6.1373		accessProvided	true	SEEDED — APA via ProQuest
+SAGE	sage	10.1177/0011000017740517		isChinaMirror	true	SEEDED — must be on cnpereading.com
+Taylor & Francis	tandfonline	10.1080/00223891.2016.1167227	doi=10.1080/00223891.2016.1167227	accessText	true	SEEDED
+JSTOR	jstor	10.2307/2117923		pdfUrl	*	SEEDED
+Annual Reviews	annualreviews	10.1146/annurev.psych.093008.100616		deliverAction	*	SEEDED — POST deliver/fulltext
+IEEE	ieee	10.1109/TSTE.2015.2415773		iframeSrc	*	SEEDED — requires stamp.jsp nav first
+Nature	nature	10.1038/s41586-019-1666-5		visibleCount	>0	SEEDED — must login first or returns HTML

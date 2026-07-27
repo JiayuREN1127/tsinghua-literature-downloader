@@ -17,7 +17,7 @@ function ask(q) {
 async function main() {
   print("");
   print("╔══════════════════════════════════════════════════╗");
-  print("║       清华大学文献下载工具 v1.0                  ║");
+  print("║       清华大学文献下载工具（统一版）               ║");
   print("║       Tsinghua Literature Downloader            ║");
   print("╚══════════════════════════════════════════════════╝");
   print("");
