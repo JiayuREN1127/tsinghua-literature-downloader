@@ -341,18 +341,41 @@ When downloading more than a few papers, group by publisher (DOI prefix) and aut
 
 ### Phase 2 — Per-group batch
 For each paper in the group, on the group's reused tab:
-1. Navigate to the article page (Alma resolver first: `https://tsinghua.alma.exlibrisgroup.com.cn/view/uresolver/86THU_INST/openurl?rft_id=info:doi/<DOI>&svc_dat=single_service`).
-2. `node scripts/probe.mjs --target <id> --name <publisher>` → confirm ready (`access`/`found`). If CAS expired mid-batch (every ~5 papers, re-run `classifyPage`), re-warm this group only and continue from the failed paper.
-3. **Download** using the publisher's strategy from the table above ("DOI prefix → publisher → download strategy"):
-   - **fetch publishers** (SAGE, T&F, Annual Reviews, IEEE): `node scripts/get-pdf.mjs --target <id> --publisher <name> [--arg doi=...] --out downloads/<paper>.pdf`
-   - **click-download publishers** (JSTOR, ProQuest, EBSCO, Nature): click the download button via CDP eval (see "Click-download pattern" above) → file lands in `~/Downloads` → `mv ~/Downloads/<file> downloads/<paper>.pdf`
-   - **navigate-download publishers** (Wiley): navigate browser to `pdfdirect?download=true` → `~/Downloads` → `mv`
-   - **ScienceDirect**: escalate to user for CAPTCHA, then click "View PDF"
-4. Verify: `python3 scripts/extract_pdf_text.py --pdf <out> --pages 5 --verify --doi <doi> --title "<title>"`.
-5. Append to `download-log.tsv`.
+
+**Paper 1 (per publisher group, full flow):**
+1. Navigate to the article page via Alma resolver.
+2. `node scripts/probe.mjs --target <id> --name <publisher>` → confirm ready (`access`/`found`).
+3. Download using the publisher's strategy (see table above).
+4. After first successful download, **cache the download button selector**. These are publisher-level constants that do NOT change per paper (see "Click Selector Caching" below).
+
+**Papers 2-N (per publisher group, minimal flow — skip probe):**
+1. Navigate to the next article page via Alma resolver. Wait for page to settle (8–12s).
+2. **Download without re-probing.** Same button selector as Paper 1. For click-download publishers: run the cached CDP eval to click the button. For navigate-download (Wiley): navigate to `pdfdirect` URL. For fetch publishers: run `get-pdf.mjs`.
+3. Every ~5 papers, re-run `classifyPage` to check if CAS session is still alive. If expired, re-warm this group only and continue.
+
+**After each paper:**
+4. Wait for file to appear in `~/Downloads` (8–12s). `ls -t ~/Downloads/ | head -1` → newest file.
+5. Move: `mv ~/Downloads/<filename> downloads/<paper>.pdf`.
+6. Verify: `python3 scripts/extract_pdf_text.py --pdf <out> --pages 3 --verify --doi <doi> --title "<title>"`.
+7. Append to `download-log.tsv`.
 
 ### Phase 3 — Summary
 Report per-group totals (`total / success / failed`), failed papers with reasons, and any papers needing user intervention (`cas_waiting_user`, CAPTCHA, etc.).
+
+### Click Selector Caching
+
+For click-download publishers, the button selector is a **publisher constant** — same DOM element regardless of which paper you're viewing. After Paper 1 succeeds, cache the selector and reuse for Papers 2-N without re-probing.
+
+| Publisher | Cached CDP eval (paste directly) |
+|---|---|
+| **JSTOR** | `document.querySelector("terms-and-conditions-pharos-button").shadowRoot.querySelector("button").click()` |
+| **EBSCO (step 1)** | `[...document.querySelectorAll("button[data-auto=tool-button]")].find(b=>b.getAttribute("aria-label")==="下载").click()` |
+| **EBSCO (step 2)** | `document.querySelector("[data-auto=bulk-download-modal-download-button]").click()` |
+| **ProQuest** | `[...document.querySelectorAll("a")].find(e=>/download pdf/i.test(e.textContent.trim())).click()` |
+| **Nature** | `[...document.querySelectorAll("a")].find(e=>/download pdf/i.test(e.textContent)&&e.getBoundingClientRect().width>0).click()` |
+| **Wiley (navigate)** | `POST /navigate?target=<id>` body=`<origin>/doi/pdfdirect/<DOI>?download=true` |
+
+**Key rule**: these selectors are publisher-level, NOT paper-level. Never re-probe or re-discover the button for subsequent papers in the same publisher group.
 
 ### DOI prefix → publisher → download strategy
 
