@@ -17,7 +17,7 @@ v3 = self-contained canonical version. Full playbooks inlined (no cross-dir refe
 
 **What changed in v3.2 (network-safe):**
 - New **Network Security Guardrails** section below — hard rules forbidding any `0.0.0.0` bind or outward proxy relay. Incident-driven: a prior run exposed the user's Clash proxy to the entire campus network via `socat bind=0.0.0.0`, triggering an institutional security alert. These rules make that impossible to repeat.
-- Canonical FlareSolverr install is now explicitly non-containerised (`python3.12 src/flaresolverr.py` on `localhost:8191`) to avoid the Docker-proxy-forwarding trap.
+- Canonical FlareSolverr install clarified: Docker is the recommended cross-architecture path (incl. Apple Silicon), but its port mapping MUST bind `127.0.0.1:8191:8191` — the upstream README's bare `-p 8191:8191` defaults to `0.0.0.0` and is forbidden here. Container networking issues are solved via `host.docker.internal` / `--dns`, never via a `socat` `0.0.0.0` bridge.
 
 **Legacy freeze:** `SKILL-v1/` (unified) and `SKILL/` (grouped) remain in the repo untouched. v3 is canonical; `sync.sh` should be repointed to install v3 to the default path (see repo root).
 
@@ -58,18 +58,33 @@ If a command contains the literal string `0.0.0.0` in a listening/`LISTEN` conte
 
 ### Rule 2 — Never relay the user's VPN/proxy outward
 
-NEVER forward the Clash / mixed-port (`127.0.0.1:7897`) or any other local proxy to a non-loopback address, via `socat`, `iptables`/`pf`, `ssh -L/-R`, `nginx`, `gost`, or any other relay tool. Exposing a paid VPN proxy on a shared network is what caused the security incident — it lets strangers commit abuse from the user's IP, and the user bears the legal consequence.
+NEVER forward the host's local proxy (e.g. Clash's mixed-port, conventionally `127.0.0.1:7897`, but the exact port varies by user) or any other local proxy to a non-loopback address, via `socat`, `iptables`/`pf`, `ssh -L/-R`, `nginx`, `gost`, or any other relay tool. Exposing a paid VPN proxy on a shared network is what caused the security incident — it lets strangers commit abuse from the user's IP, and the user bears the legal consequence.
 
-### Rule 3 — Prefer non-containerised FlareSolverr
+### Rule 3 — FlareSolverr: containerised is fine, but always bind to localhost
 
-The canonical FlareSolverr install runs `python3.12 src/flaresolverr.py` directly on `localhost:8191`. This sidesteps the Docker-proxy-forwarding trap entirely and is the only supported install path in this skill. Do NOT re-containerise FlareSolverr with Docker/Colima unless the user explicitly asks; and even then, never bridge the host proxy with a `0.0.0.0` socat — configure proxy env vars inside the container pointing at the host-gateway IP instead.
+FlareSolverr is a self-hosted **local** app (listens on `localhost:8191`), never a cloud service. On x64 hosts it can run from source; on **Apple Silicon / ARM64 the only supported install is the official Docker image** — so a containerised install is explicitly allowed here. The single hard constraint is the port mapping:
+
+```bash
+docker run -d --name flaresolverr \
+  -p 127.0.0.1:8191:8191 \   # ← the 127.0.0.1: prefix is MANDATORY
+  ghcr.io/flaresolverr/flaresolverr:latest
+```
+
+The `127.0.0.1:` prefix publishes the port to the host's loopback only. **Never** use a bare `-p 8191:8191` — it defaults to `0.0.0.0` (= exposed to the whole LAN). Note the upstream FlareSolverr README prints the bare form, so you must always re-add the `127.0.0.1:` prefix yourself.
+
+**If the container cannot reach the network** (e.g. its headless Chrome reports `net::ERR_NAME_NOT_RESOLVED`), fix the *root cause* — do NOT bridge the host proxy outward:
+
+- *Container needs the host's proxy?* Set the proxy **inside the container** pointing at `http://host.docker.internal:<proxy-port>`. `host.docker.internal` is Docker's official cross-platform alias for the host's loopback services — it needs **no port exposure and no hardcoded IP**. (On native Linux Docker, add `--add-host=host.docker.internal:host-gateway`.) Substitute the host's real local proxy port for `<proxy-port>`.
+- *Container DNS failing?* Pass `--dns <resolver>` with whatever public resolver the host itself uses. Don't invent a proxy workaround for a DNS problem.
+
+NEVER use `socat` / `ssh -L` / any relay to forward the host proxy onto `0.0.0.0` or onto a VM-bridge IP so a container can reach it — that is exactly the 2026-07-26 incident.
 
 ### Rule 4 — Pre-flight check before ANY background networking command
 
 Before running any `nohup ... &`, `... &`, or background process that opens a network port, you MUST:
 
 1. State which port and which bind address will be used.
-2. Confirm the bind address is `127.0.0.1` (or a private VM-bridge IP the user knows about).
+2. Confirm the bind address is `127.0.0.1` (loopback only). If a container needs to reach it, use `host.docker.internal` — never bind to `0.0.0.0` or a VM-bridge IP.
 3. If it is `0.0.0.0` / `*` / all-interfaces, STOP. Do not run it. Ask the user.
 
 ### Rule 5 — Cleanup is mandatory
@@ -97,17 +112,33 @@ Before attempting downloads, confirm these conditions:
    - Also disclose the limitations:
      * Only handles JS Challenge ("Checking your browser..."). Does NOT solve CAPTCHA images, checkboxes, or "Are you a robot?" pages (its CAPTCHA solvers are broken per upstream).
      * Consumes ~500MB RAM for its headless Chrome instance.
-     * Requires Python 3.12+ and Chrome on the machine.
      * Runs as a background process until manually stopped.
    - Ask the user: "Install FlareSolverr now, or skip and handle Cloudflare pages manually?"
-   - If they agree, install and start it:
+   - If they agree, install and start it. **Docker is the recommended path — works on x64 AND Apple Silicon (ARM64):**
      ```bash
-     # Clone and install (macOS/Linux)
+     # Recommended. The 127.0.0.1: prefix is MANDATORY (see Network Security Guardrails, Rule 3).
+     # The upstream README prints a bare -p 8191:8191 (defaults to 0.0.0.0) — always re-add 127.0.0.1:.
+     docker run -d --name flaresolverr \
+       -p 127.0.0.1:8191:8191 \
+       -e LOG_LEVEL=info \
+       ghcr.io/flaresolverr/flaresolverr:latest
+     ```
+     **If the container can't resolve hostnames** (`net::ERR_NAME_NOT_RESOLVED`), add a DNS resolver and/or point at the host proxy — but always via localhost-safe means, never a `0.0.0.0` bridge:
+     ```bash
+     docker run -d --name flaresolverr \
+       -p 127.0.0.1:8191:8191 \
+       -e LOG_LEVEL=info \
+       --dns <resolver> \
+       -e HTTP_PROXY="http://host.docker.internal:<proxy-port>" \
+       -e HTTPS_PROXY="http://host.docker.internal:<proxy-port>" \
+       ghcr.io/flaresolverr/flaresolverr:latest
+     ```
+     **Alternative — run from source (x64 hosts only; ARM64 must use Docker, see upstream README):**
+     ```bash
+     # macOS/Linux x64 only
      git clone https://github.com/FlareSolverr/FlareSolverr.git /tmp/flaresolverr-src
      cd /tmp/flaresolverr-src && python3.12 -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
-     # Start
      HEADLESS=false python3.12 src/flaresolverr.py &
-
      # Windows: use %TEMP% instead of /tmp, python instead of python3.12
      ```
    - Verify: `curl -s --max-time 3 http://localhost:8191/v1 -H "Content-Type: application/json" -d '{"cmd":"sessions.list"}'`

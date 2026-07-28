@@ -48,7 +48,7 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 
 **2026-07-26 安全事件**：v3.1 运行时，AI agent 为让 Docker 容器访问本地 Clash 代理，自行执行 `socat TCP-LISTEN:17897,bind=0.0.0.0 TCP:127.0.0.1:7897`，将代理暴露到整个校园网，触发学校"私设代理"安全告警。
 
-**v3.2 修复**：在 `SKILL.md` 中新增 **Network Security Guardrails** 硬规则段（5 条规则），禁止任何 `0.0.0.0` 绑定与代理外转，明确 FlareSolverr 只走非容器化 `localhost:8191` 安装路径，并要求后台网络进程必须跟踪 PID 会后清理。
+**v3.2 修复**：在 `SKILL.md` 中新增 **Network Security Guardrails** 硬规则段（5 条规则），禁止任何 `0.0.0.0` 绑定与代理外转。FlareSolverr 安装澄清为：Docker 是推荐的跨架构路径（含 Apple Silicon），但端口映射必须 `-p 127.0.0.1:8191:8191`（上游 README 的裸 `-p 8191:8191` 默认 `0.0.0.0`，本 skill 禁用）；容器联网问题用 `host.docker.internal` / `--dns` 解决，绝不走 `socat` `0.0.0.0` 桥接。规则全部使用占位符（`<proxy-port>`、`<resolver>`、`host.docker.internal`），不写死任何 IP/端口，便于合作者复用。
 
 ### v1 → v2 → v3 → v3.1 Evolution
 
