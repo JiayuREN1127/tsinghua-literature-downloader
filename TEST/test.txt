@@ -1,0 +1,42 @@
+Database Download Test — 10 databases, 1 paper each
+=====================================================
+
+
+   RF-L2-17 | Prato et al. (2024) | The Status of Status Research: A Review of the Types, Functions, Levels, and Audiences of Status
+   JOM 50(6), 2266-2308 | DOI: 10.5465/om.2021.0467
+
+
+   RF-PID-22 | Roberts & Yoon (2022) | Personality Psychology: A Brief but Assertive History
+   ARP 73, 489-516 | DOI: 10.1146/annurev-psych-020821-050517
+
+
+   RF-MOT-28 | Xu et al. (2026) | Fueling Employees' Initiative: A Meta-Analysis of the Motivational Antecedents of Proactive Work Behavior
+   JOB 47, 399-419 | DOI: 10.1002/job.70018
+
+
+   RF-L2-20 | Li et al. (2024) | Are bad leaders indeed bad for employees? A meta-analysis of longitudinal studies
+   JBE 191, 399-413 | DOI: 10.1007/s10551-023-05352-3
+
+
+   RF-PID-01 | Judge et al. (2002) | Personality and leadership: A qualitative and quantitative review
+   JAP 87(4), 765-780 | DOI: 10.1037/0021-9010.87.4.765
+
+
+   RF-PID-13 | Salgado et al. (2012) | The Five-Factor Model, forced-choice personality inventories and performance
+   EJWOP 21(7), 927-947 | DOI: 10.1080/1359432x.2012.716198
+
+
+   RF-MOT-20 | Parker, Van den Broeck & Holman (2017) | Work design influences: A synthesis of multilevel factors that affect work design
+   AMA 11(1), 93-112 | DOI: 10.5465/annals.2014.0054
+
+
+   RF-L3-20 | Dinh et al. (2014) | Leadership theory and research in the new millennium
+   LQ 25(1), 36-62 | DOI: 10.1016/j.leaqua.2013.11.005
+
+
+   RF-EJW-30 | Edu-Valsania et al. (2022) | Burnout: A Review of Theory and Measurement
+   IJERPH 19(8), 4641 | DOI: 10.3390/ijerph19084641
+
+
+    RF-L2-28 | Higgs, Bulkan & Ererdi (2025) | The bad, the very bad and the ugly: Towards an integrated model of dark leadership
+    JMP 41(4), 657-675 | DOI: 10.1108/jmp-04-2024-0282
