@@ -193,7 +193,7 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 | 4 | 页面显示 "Brought to you by: Tsinghua University" | 授权成功 |
 | 5 | **⚠️ CDP 触发 CAPTCHA**（"Are you a robot?"）→ **人工在 Chrome 中完成验证** | FlareSolverr 无法解决（已实测：45s 超时，0 字节返回） |
 | 6 | 人工过 CAPTCHA 后，点击 "View PDF" | 开新 tab `pdf.sciencedirectassets.com`（S3 presigned URL） |
-| 7 | 人工下载或从新 tab 获取 PDF | S3 URL 5 分钟过期 |
+| 7 | **在新 CDN tab 上人工放行一次 Cloudflare**（"Just a moment..."），放行后 Chrome 原生下载或手动下载 PDF | S3 URL 5 分钟过期；**不要用 navigate 把文章 tab 覆盖成 CDN 页**（会丢文章页，且 CF 未放行时 fetch 403） |
 
 ### 关键教训
 
@@ -208,6 +208,14 @@ FlareSolverr 上游文档明确标注其 CAPTCHA solvers 均已失效。遇到 C
 5. **预签名 URL 5 分钟过期**：`X-Amz-Expires=300`。过期后需回到文章页重新点击 View PDF。
 
 6. **CAS 会话缓存**：一次 CAS 登录后，同一浏览器会话中访问其他 SD 文章无需重复登录（但 CAPTCHA 可能再次触发）。
+
+7. **CDN 子域需单独放行 Cloudflare（2026-10-07 实测）**：点击 View PDF 打开的 `pdf.sciencedirectassets.com` tab 会显示 "Just a moment..."。`cf_clearance` 不跨子域共享，主站 `sciencedirect.com` 放行 ≠ CDN 已放行。**必须在新 CDN tab 上人工再放行一次**；放行后 `fetch(location.href, {credentials:"include"})` 才返回真实 PDF，否则返回 403 HTML（head=`<!DOCTYPE`，size~1.2MB）。
+
+8. **SD 原生下载文件名格式（2026-10-07 实测）**：人工在 CDN tab 放行后，Chrome 原生下载落 `~/Downloads`，文件名 `1-s2.0-<PII>-main.pdf`（如 `1-s2.0-S0277953623008067-main.pdf`）。按此模式 `mv` 到 `downloads/<paper>.pdf`。**不要用 `get-pdf.mjs`/`browser_pdf_downloader` 的 fetch 路径**——CDN 未放行前必 403；放行后用户通常已手动下载，直接用文件即可。
+
+9. **不要 navigate 把文章 tab 覆盖成 CDN 页**：若对文章 tab 执行 `POST /navigate` 到 `pdfft` URL，文章页被覆盖，且同 tab 上的 CF 挑战更难定位（后台 tab）。正确做法：保持文章 tab，让用户手动点 View PDF 开新 CDN tab（前台可见，便于放行），再从 `~/Downloads` 取文件。
+
+10. **并行批次注意（v3.4）**：SD 两篇并行开文章 tab 可行，但每篇都要走"人工解主站 CAPTCHA → 人工点 View PDF → 人工放行 CDN → 原生下载"，人工环节不可省略。并行只省页面加载，不省人工；若 N>2 个 SD tab，CAPTCHA 会积压，建议 SD 组的批次 N 不要大于 3。
 
 ---
 

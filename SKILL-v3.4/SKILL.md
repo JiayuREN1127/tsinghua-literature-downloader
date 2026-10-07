@@ -238,7 +238,7 @@ The **access characteristics** (CAPTCHA, mirror, most-stable source) below are p
 | **Annual Reviews** | `10.1146/` | **fetch (POST)** | `get-pdf.mjs --publisher annualreviews` | **页面结构统一，自动化成功率最高**。POST `deliver/fulltext`。 |
 | **IEEE Xplore** | `10.1109/` | **fetch (iframe src)** | `get-pdf.mjs --publisher ieee` | 需先走 `stamp.jsp` 拿 iframe src。 |
 | **Nature** | `10.1038/` | **click-download** | CDP click visible "Download PDF" | 须先登录，否则返回 HTML。click 选可见（`width>0`）的链接。 |
-| **ScienceDirect** | `10.1016/` | **click (human-assisted CAPTCHA)** | CDP click + human | **CDP 触发 CAPTCHA（"Are you a robot?"），必须人工解**。人解后点 View PDF → S3 预签名新标签 → 下载。预签名 URL 有时效。 |
+| **ScienceDirect** | `10.1016/` | **click (human-assisted CAPTCHA)** | CDP click + human | **CDP 触发 CAPTCHA（"Are you a robot?"），必须人工解**。人解后点 View PDF → S3 预签名新标签 → 麻烦的是 **`pdf.sciencedirectassets.com` CDN 子域还需单独人工放行一次 Cloudflare**（cf_clearance 不跨子域），放行后 Chrome 原生下载落 `~/Downloads`（文件名 `1-s2.0-<PII>-main.pdf`）。预签名 URL 5 分钟时效。**不要 navigate 覆盖文章 tab；不要用 fetch 路径（未放行必 403）**。详见 lessons.md SD 流程。 |
 
 ## Cached selectors (publisher constants — same for every paper in the group)
 
