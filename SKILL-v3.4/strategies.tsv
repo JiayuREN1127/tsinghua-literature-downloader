@@ -1,0 +1,25 @@
+# Strategy manifest — one row per (database, subtype).
+# Freshness tracking for the hardcoded download strategies.
+# Update last_tested whenever a canary passes; updated_at whenever the action file is edited.
+#
+# Columns (TAB-separated):
+#   database     publisher/database name
+#   subtype      article | chapter | oa | subscription | all  ("all" = single strategy covers everything)
+#   strategy     click-download | navigate-download | fetch | click-human-assisted
+#   tool         action module or CDP eval key
+#   last_tested  ISO date of last successful canary (empty = not yet verified)
+#   updated_at   ISO date the strategy was last edited (empty = original)
+#   notes        access characteristic / trap
+database	subtype	strategy	tool	last_tested	updated_at	notes
+SAGE	all	fetch	get-pdf.mjs --publisher sage			cnpereading.com mirror (hardcoded, do NOT use journals.sagepub.com); RSC __next_f.push /storage/ regex
+Taylor & Francis	all	fetch	get-pdf.mjs --publisher tandfonline			fetch /doi/pdf/<DOI>?download=true after SSO returns application/pdf
+JSTOR	all	click-download	CDP shadow T&C button			T&C interstitial returns HTML on fetch; must click agreement first
+Wiley	subscription	navigate-download	CDP navigate pdfdirect			Cloudflare 403 on fetch; browser navigation passes (cookie handling differs)
+Wiley	oa	fetch	direct PDF URL			OA may serve PDF directly without pdfdirect
+ProQuest	all	click-download	CDP click Download PDF			APA PsycArticles is the most stable APA source; PDF in custom viewer, no fetchable URL
+EBSCO	all	click-download	2-step CDP click			AOM (AMJ/AMR/AMA) via Business Source Complete is the most reliable full-text source
+Annual Reviews	all	fetch	get-pdf.mjs --publisher annualreviews			uniform page layout, highest automation success rate; POST deliver/fulltext
+IEEE	all	fetch	get-pdf.mjs --publisher ieee			requires stamp.jsp nav first to obtain iframe src
+Nature	all	click-download	CDP click visible Download PDF			login required or HTML returned; select link with width>0
+ScienceDirect	article	click-human-assisted	CDP click + human CAPTCHA			CDP triggers CAPTCHA "Are you a robot?"; human resolves; presigned S3 URL time-limited
+ScienceDirect	chapter	click-human-assisted	CDP click + human CAPTCHA			different View PDF placement than article subtype

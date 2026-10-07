@@ -29,7 +29,8 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 ├── SKILL-v3/     ← token-disciplined（probe + action libraries）   — legacy, frozen
 ├── SKILL-v3.1/   ← click-first（click-download primary strategy）  — legacy, frozen
 ├── SKILL-v3.2/   ← network-safe（网络安全硬规则 + 事件复盘）       — legacy, frozen
-├── SKILL-v3.3/   ← strategy-hardcoded（写死策略 + fail-fast 哨兵） — CANONICAL ✅
+├── SKILL-v3.3/   ← strategy-hardcoded（写死策略 + fail-fast 哨兵） — legacy, frozen
+├── SKILL-v3.4/   ← parallel-batch（N tab 并行加载 + 串行下载）     — CANONICAL ✅
 ├── TEST/          ← 测试清单和实测报告
 ├── sync.sh        ← 同步当前 canonical 版本到各 AI 工具目录
 └── README.md
@@ -44,7 +45,8 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 | v3.0 | `v3.0` | `SKILL-v3/` | Token Discipline 硬规则 + 探针库（token 降 1000×） | frozen |
 | v3.1 | `v3.1` | `SKILL-v3.1/` | click-first 策略（5/8 用浏览器原生下载，成功率 7/8） | frozen |
 | v3.2 | `v3.2` | `SKILL-v3.2/` | **网络安全硬规则**（禁止 `0.0.0.0` 绑定 / 代理外泄） | frozen |
-| v3.3 | `v3.3` | `SKILL-v3.3/` | **写死单策略无 fallback + 分组 fail-fast 哨兵 + `strategies.tsv` 清单** | **canonical** |
+| v3.3 | `v3.3` | `SKILL-v3.3/` | **写死单策略无 fallback + 分组 fail-fast 哨兵 + `strategies.tsv` 清单** | frozen |
+| v3.4 | `v3.4` | `SKILL-v3.4/` | **批内并行：N tab 同时加载文章页（默认 10，会话参数）+ 串行下载保文件归因 + SD 并入并行 + bot 触发自动错峰** | **canonical** |
 
 ### v3.2 Changelog（incident-driven）
 
@@ -65,7 +67,19 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 - **SAGE 写死 `cnpereading.com` 国内镜像**（不用 `journals.sagepub.com`）。
 - 继承 v3.2 网络安全硬规则、v3 token 纪律探针库、FlareSolverr（安全绑定）。
 
-### 下载策略对比（v3.3 当前 · 四种策略）
+### v3.4 Changelog（parallel-batch）
+
+**动机**：v3.3 的 Stage D 复用单个认证 tab 逐篇串行导航 + 下载，页面渲染等待（8–12s/篇）是主要耗时，无法利用浏览器并行加载能力。
+
+**v3.4 改进**：
+- **并行加载 + 串行下载**：canary 通过后，每批同时开 `N` 个 tab（默认 10，会话参数，Stage D 前问用户一次可改），各 navigate 到一篇文献的文章页并行加载；下载阶段逐个 tab 串行（点下载 → `mv` → verify → log），`ls -t ~/Downloads | head -1` 文件归因保持可靠。
+- **SD 并入并行批次**：ScienceDirect 的 tab 并行打开，CAPTCHA 人工逐个解（串行下载原则不变）。
+- **bot 触发自动错峰**：同出版商批次出现 ≥2 个 bot 挑战时，自动降为每 1–2s 错峰开 tab，并在总结报告标注。
+- **tab 生命周期**：批批新开、批后即关；认证 tab 留作 CAS 锚点全程不关。
+- **canary 保持串行**：策略验证与选择器缓存仍在认证 tab 上单篇完成。
+- 继承 v3.3 全部：写死单策略 + fail-fast 哨兵、`strategies.tsv`、`journal_database_mapping.md` 分类器、v3.2 网络安全硬规则、v3 token 纪律。
+
+### 下载策略对比（v3.4 当前 · 四种策略）
 
 | 维度          | fetch()                                                                     | click-download                                  | navigate-download                                          | click-human-assisted                     |
 | ----------- | --------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------- |
@@ -73,25 +87,25 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 | 下载速度        | 慢 — `fetch`→arrayBuffer→chunk 逐个 CDP round-trip（4MB ≈ 10-30s）               | 快 — 浏览器原生流式直写磁盘（4MB ≈ 2-5s）                     | 快 — 导航触发原生下载直写磁盘（4MB ≈ 2-5s）                               | 受限于人工 — CAPTCHA 解后 click 原生下载快，但等人是瓶颈    |
 | 支持数据库       | SAGE、T&F、Annual Reviews、IEEE、Wiley-OA（4 库 / 10）                             | JSTOR、ProQuest、EBSCO、Nature（4 库 / 10）           | Wiley-订阅（1 库 / 10）                                         | ScienceDirect（1 库 / 10）                  |
 | 失败成本        | v3.3 写死后低 — 仅用于确实返回 `application/pdf` 的库；误用则高（T&C / Cloudflare / viewer 拦截） | 低 — 模拟人类操作，首次即成功，无诊断开销                          | 低 — 浏览器处理 cookie / Cloudflare，导航即下载                        | 中 — CAPTCHA 无法自动化，但解后 click 可靠           |
-### v1 → v2 → v3 → v3.1 → v3.2 → v3.3 版本演进
+### v1 → v2 → v3 → v3.1 → v3.2 → v3.3 → v3.4 版本演进
 
-| 维度    | v1（原始）                              | v2（+FlareSolverr）         | v3（token-disciplined）         | v3.1（click-first）              | v3.2（network-safe）             | v3.3（strategy-hardcoded）                                                             |
-| ----- | ----------------------------------- | ------------------------- | ----------------------------- | ------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------ |
-| 页面读取  | 原始 innerHTML/innerText（100-500KB/页） | 同 v1                      | 探针 ~200B/次，DOM 服务端过滤          | 同 v3                           | 同 v3                           | 同 v3，探针优化                                                                            |
-| Token | ~250K                               | ~200K                     | ~150                          | ~300                           | ~300                           | ~300（哨兵首篇验证后批量无 re-probe，批量均摊更省）                                                     |
-| 下载方式  | 全部 fetch() 分块                       | 全部 fetch() 分块             | 全部 fetch() 分块                 | 5/8 click + 2/8 fetch + 1/8 人工 | 同 v3.1                         | **写死单策略无 fallback**：<br>4 库 fetch + 4 库 click-download + 1 库 navigate + 1 库 click-人工 |
-| 下载速度  | 慢（分块，4MB ≈ 20s）                     | 慢（同 v1）                   | 慢（同 v1）                       | 快（click 原生流，4MB ≈ 3s）          | 同 v3.1                         | 同 v3.1（多数走原生；仅 fetch 库分块）                                                            |
-| 成功率   | 2/8                                 | 3/8（+Wiley）               | 2/8（探针改善诊断，fetch 仍 6/8 失败）    | 7/8                            | 7/8                            | 待实测（目标 ≥ 7/8，哨兵消除批量浪费）                                                               |
-| 核心改进  | —                                   | FlareSolverr 解 Cloudflare | 探针库 + Token 纪律（token 降 1000×） | click-first（2/8→7/8，速度 3-10×）  | 网络安全硬规则（禁 `0.0.0.0` 绑定 / 代理外泄） | 写死单策略 + 分组 fail-fast 哨兵 + `strategies.tsv` 清单                                        |
+| 维度    | v1（原始）                              | v2（+FlareSolverr）         | v3（token-disciplined）         | v3.1（click-first）              | v3.2（network-safe）             | v3.3（strategy-hardcoded）                                                             | v3.4（parallel-batch）                                                                       |
+| ----- | ----------------------------------- | ------------------------- | ----------------------------- | ------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 页面读取  | 原始 innerHTML/innerText（100-500KB/页） | 同 v1                      | 探针 ~200B/次，DOM 服务端过滤          | 同 v3                           | 同 v3                           | 同 v3，探针优化                                                                            | 同 v3，探针优化                                                                               |
+| Token | ~250K                               | ~200K                     | ~150                          | ~300                           | ~300                           | ~300（哨兵首篇验证后批量无 re-probe，批量均摊更省）                                                     | 同 v3.3（并行批次不引入 re-probe；无 re-probe 原则不变）                                              |
+| 下载方式  | 全部 fetch() 分块                       | 全部 fetch() 分块             | 全部 fetch() 分块                 | 5/8 click + 2/8 fetch + 1/8 人工 | 同 v3.1                         | **写死单策略无 fallback**：<br>4 库 fetch + 4 库 click-download + 1 库 navigate + 1 库 click-人工 | 同 v3.3（策略不变，仅编排并行化：N tab 并行加载文章页 + 串行下载）                                  |
+| 下载速度  | 慢（分块，4MB ≈ 20s）                     | 慢（同 v1）                   | 慢（同 v1）                       | 快（click 原生流，4MB ≈ 3s）          | 同 v3.1                         | 同 v3.1（多数走原生；仅 fetch 库分块）                                                            | 更快（页面渲染 8–12s/篇并行化；串行下载阶段同 v3.3）                                                  |
+| 成功率   | 2/8                                 | 3/8（+Wiley）               | 2/8（探针改善诊断，fetch 仍 6/8 失败）    | 7/8                            | 7/8                            | 待实测（目标 ≥ 7/8，哨兵消除批量浪费）                                                               | 待实测（目标 ≥ 7/8，不影响策略成功率）                                                                |
+| 核心改进  | —                                   | FlareSolverr 解 Cloudflare | 探针库 + Token 纪律（token 降 1000×） | click-first（2/8→7/8，速度 3-10×）  | 网络安全硬规则（禁 `0.0.0.0` 绑定 / 代理外泄） | 写死单策略 + 分组 fail-fast 哨兵 + `strategies.tsv` 清单                                        | 批内 N tab 并行加载（默认 10 会话参数）+ 串行下载保归因 + SD 并入并行 + bot 触发自动错峰          |
 
 ## Quick Start
 
 ```bash
 # Canonical version (recommended)
-cd SKILL-v3.3 && node start.js
+cd SKILL-v3.4 && node start.js
 
 # Or any frozen legacy version
-cd SKILL-v3.2 && node start.js
+cd SKILL-v3.3 && node start.js
 ```
 
 See each `SKILL-vX/` directory for its own `README.md` and `SKILL.md`.
@@ -100,16 +114,17 @@ See each `SKILL-vX/` directory for its own `README.md` and `SKILL.md`.
 
 ```bash
 ./sync.sh          # dry-run preview
-./sync.sh --apply  # actually copy SKILL-v3.3 to default skill paths
+./sync.sh --apply  # actually copy SKILL-v3.4 to default skill paths
 ```
 
-`sync.sh` installs `SKILL-v3.3/` (canonical) to the default skill path (e.g. `~/.claude/skills/tsinghua-literature-downloader`). Legacy versions can be synced manually.
+`sync.sh` installs `SKILL-v3.4/` (canonical) to the default skill path (e.g. `~/.claude/skills/tsinghua-literature-downloader`). Legacy versions can be synced manually.
 
 ## GitHub Releases
 
 See [Releases](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases) for tagged versions with changelogs:
 
-- [`v3.3`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.3) — strategy-hardcoded + fail-fast canary (current)
+- [`v3.4`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.4) — parallel-batch: N tab 并行加载 + 串行下载 (current)
+- [`v3.3`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.3) — strategy-hardcoded + fail-fast canary
 - [`v3.2`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.2) — network-safe hard rules
 - [`v3.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.1) — click-first download strategy
 - [`v3.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.0) — token-disciplined probe/action libraries

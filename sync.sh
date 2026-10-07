@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # [Unix-only] Sync canonical skill to local AI tool directories.
 #
-# v3.3 (SKILL-v3.3/) is the CURRENT CANONICAL version (strategy-hardcoded).
+# v3.4 (SKILL-v3.4/) is the CURRENT CANONICAL version (parallel-batch).
 # It installs to the default path (tsinghua-literature-downloader).
 # Legacy versions install with versioned suffixes.
 #
@@ -13,8 +13,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# --- Canonical (v3.3, strategy-hardcoded) ---
-CANONICAL_SRC="$REPO_ROOT/SKILL-v3.3"
+# --- Canonical (v3.4, parallel-batch) ---
+CANONICAL_SRC="$REPO_ROOT/SKILL-v3.4"
 CANONICAL_TARGETS=(
   "$HOME/.claude/skills/tsinghua-literature-downloader"
   "$HOME/.agents/skills/tsinghua-literature-downloader"
@@ -39,6 +39,9 @@ fi
 if [[ -d "$REPO_ROOT/SKILL-v3.2" ]]; then
   LEGACY+=("$REPO_ROOT/SKILL-v3.2|-v3.2|v3.2 network-safe")
 fi
+if [[ -d "$REPO_ROOT/SKILL-v3.3" ]]; then
+  LEGACY+=("$REPO_ROOT/SKILL-v3.3|-v3.3|v3.3 strategy-hardcoded")
+fi
 
 APPLY=false
 [[ "${1:-}" == "--apply" ]] && APPLY=true
@@ -62,12 +65,12 @@ sync_dir() {
 
 echo "=========================================="
 echo " tsinghua-literature-downloader sync"
-echo " canonical: SKILL-v3.3 (strategy-hardcoded)"
+echo " canonical: SKILL-v3.4 (parallel-batch)"
 echo " mode: $( $APPLY && echo 'APPLY' || echo 'DRY RUN (pass --apply to apply)' )"
 echo "=========================================="
 echo ""
 
-echo "--- canonical (SKILL-v3.3) → default path ---"
+echo "--- canonical (SKILL-v3.4) → default path ---"
 for t in "${CANONICAL_TARGETS[@]}"; do
   sync_dir "$CANONICAL_SRC" "$t" "$(basename "$(dirname "$t")")/$(basename "$t")"
 done
