@@ -2,20 +2,20 @@
 
 通过已登录的清华图书馆/WebVPN Chrome 会话自动化下载学术 PDF。
 
-## Current: v4
+## Current: v4.1
 
-当前维护版为 [SKILL-v4](SKILL-v4/)，版本 `4.0.1`。每个 session 首次执行前检查 GitHub 最新 release；有更新则提醒，由用户决定升级，检查失败继续本地版。v3.4 及更早目录保留为历史版。
+当前维护版为 [SKILL-v4.1](SKILL-v4.1/)，版本 `4.1.0`。每个 session 首次执行前检查 GitHub 最新 release；有更新则提醒，由用户决定升级，检查失败继续本地版。v4 及更早目录保留为历史版。
 
-v4 保留分组预热、canary、并行加载/串行下载；固定策略采用已验证 fetch 优先，其次直链、其他动作。新增累计120秒自动尝试上限、批末 DOI/标题核对、最新 lessons 优先规则。EBSCO 采用阅读器 CDS fetch，ScienceDirect 采用新 CDN tab fetch；T&F 采用原生直链。加入 Springer、Royal Society、Oxford Academic、AUA 和 Ovid 动作。
+v4.1 保留分组预热、canary、并行加载/串行下载、累计120秒上限及批末 DOI/标题核对。ScienceDirect 首选实际 PDF 直链，每篇新开 tab；PDF 检查并保存后关闭本篇 tab，失败或等待人工处理的页面保留。EBSCO 等其他数据库策略不变。
 
 ```bash
-cd SKILL-v4
+cd SKILL-v4.1
 node start.js
 # 在仓库根目录同步当前版（保留本地 downloads 和日志）：
 ./sync.sh --apply
 ```
 
-同步覆盖已有工具和 Codex 账号安装；旧版只在显式传入 `--include-legacy` 时同步。测试：`cd SKILL-v4 && npm test`。现场结果/局限见 [lessons](SKILL-v4/lessons.md)，完整流程见 [SKILL](SKILL-v4/SKILL.md)。[最新 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
+同步覆盖已有工具和 Codex 账号安装；旧版只在显式传入 `--include-legacy` 时同步。测试：`cd SKILL-v4.1 && npm test`。现场结果/局限见 [lessons](SKILL-v4.1/lessons.md)，完整流程见 [SKILL](SKILL-v4.1/SKILL.md)。[最新 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
 
 以下版本对照和性能数据为 v3.4 及更早时期的历史说明，不能作为 v4 当前执行策略或新基准。
 

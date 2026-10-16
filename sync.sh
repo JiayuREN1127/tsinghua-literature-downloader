@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # [Unix-only] Sync canonical skill to local AI tool directories.
 #
-# v4 (SKILL-v4/) is the CURRENT CANONICAL version.
+# v4.1 (SKILL-v4.1/) is the CURRENT CANONICAL version.
 # It installs to the default path (tsinghua-literature-downloader).
 # Legacy versions install with versioned suffixes.
 #
@@ -13,8 +13,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-# --- Canonical (v3.4, parallel-batch) ---
-CANONICAL_SRC="$REPO_ROOT/SKILL-v4"
+# --- Canonical (v4.1) ---
+CANONICAL_SRC="$REPO_ROOT/SKILL-v4.1"
 CANONICAL_TARGETS=(
   "$HOME/.claude/skills/tsinghua-literature-downloader"
   "$HOME/.agents/skills/tsinghua-literature-downloader"
@@ -83,12 +83,12 @@ sync_dir() {
 
 echo "=========================================="
 echo " tsinghua-literature-downloader sync"
-echo " canonical: SKILL-v4 (bounded, fixed database strategies)"
+echo " canonical: SKILL-v4.1 (SD native direct link; close successful paper tabs)"
 echo " mode: $( $APPLY && echo 'APPLY' || echo 'DRY RUN (pass --apply to apply)' )"
 echo "=========================================="
 echo ""
 
-echo "--- canonical (SKILL-v4) → default path ---"
+echo "--- canonical (SKILL-v4.1) → default path ---"
 for t in "${CANONICAL_TARGETS[@]}"; do
   sync_dir "$CANONICAL_SRC" "$t" "$(basename "$(dirname "$t")")/$(basename "$t")"
 done
