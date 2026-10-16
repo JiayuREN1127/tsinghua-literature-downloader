@@ -3,3 +3,5 @@ node_modules/
 # download artifacts (per SKILL-vX dir) — never commit PDFs or partial transfers
 downloads/
 *.partial
+__pycache__/
+*.pyc

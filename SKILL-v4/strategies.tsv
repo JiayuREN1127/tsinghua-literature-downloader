@@ -1,0 +1,20 @@
+# Fixed strategies. Newer dated lessons override older execution guidance within the same scope.
+# last_tested dates reflect live evidence; notes distinguish manual and retained untested actions.
+database	subtype	strategy	tool	last_tested	updated_at	notes
+ScienceDirect	article	newtab-fetch	get-pdf.mjs --publisher sciencedirect	2026-10-16	2026-10-16	Live CDN fetch; pdfft in article returned HTML; text matched delivered PDF
+ScienceDirect	chapter	newtab-fetch	get-pdf.mjs --publisher sciencedirect		2026-10-16	Article evidence only; chapter needs its own canary
+EBSCO	all	fetch	get-pdf.mjs --publisher ebsco	2026-10-16	2026-10-16	Viewer CDS resource; page-context credentials omit; byte-identical live test
+Taylor & Francis	all	navigate-download	get-pdf.mjs --publisher tandfonline	2026-10-16	2026-10-16	Native PDF direct link succeeded; live fetch returned article HTML
+ProQuest	all	click-download	get-pdf.mjs --publisher proquest	2026-10-16	2026-10-16	PFT anchor click verified
+IEEE	all	fetch	get-pdf.mjs --publisher ieee		2026-10-16	Retain iframe fetch; this run verified native getPDF only
+Springer	all	navigate-download	get-pdf.mjs --publisher springer	2026-10-16	2026-10-16	Native /content/pdf/DOI.pdf verified
+Royal Society	article	navigate-download	get-pdf.mjs --publisher royalsociety	2026-10-16	2026-10-16	Extract article-matched href; never guess resource ID
+Oxford Academic	article	navigate-download	get-pdf.mjs --publisher oxford	2026-10-16	2026-10-16	P0842 article-pdf verified
+AUA Journals	article	navigate-download	get-pdf.mjs --publisher aua		2026-10-16	Manual endpoint verified 2026-10-16; automatic canary required
+Ovid	article	click-download	get-pdf.mjs --publisher ovid	2026-10-16	2026-10-16	P1145 PDF button succeeded; old watcher missed fast arrival; recanary v4 runner
+Wiley	subscription	navigate-download	get-pdf.mjs --publisher wiley		2026-10-16	Align stale action with documented pdfdirect navigation
+Wiley	oa	fetch	get-pdf.mjs --plan			Retained explicit direct OA PDF plan; needs canary
+SAGE	all	fetch	get-pdf.mjs --publisher sage			Retained cnpereading.com mirror strategy
+JSTOR	all	click-download	get-pdf.mjs --publisher jstor		2026-10-16	Align stale action with documented T&C click; no new live test
+Annual Reviews	all	fetch	get-pdf.mjs --publisher annualreviews			Retained POST deliver/fulltext
+Nature	all	click-download	get-pdf.mjs --publisher nature			Retained visible PDF button

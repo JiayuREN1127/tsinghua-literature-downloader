@@ -1,0 +1,12 @@
+{
+  "name": "tsinghua-literature-downloader",
+  "version": "4.0.0",
+  "description": "Tsinghua institutional PDFs: fixed strategies, 120-second attempts, batch-final reconciliation",
+  "type": "module",
+  "scripts": {
+    "start": "node start.js",
+    "probe": "node scripts/probe.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "license": "MIT"
+}

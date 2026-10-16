@@ -2,6 +2,23 @@
 
 通过已登录的清华图书馆/WebVPN Chrome 会话自动化下载学术 PDF。
 
+## Current: v4
+
+当前维护版为 [SKILL-v4](SKILL-v4/)，版本 `4.0.0`。v3.4 及更早目录保留为历史版。
+
+v4 保留分组预热、canary、并行加载/串行下载；固定策略采用已验证 fetch 优先，其次直链、其他动作。新增累计120秒自动尝试上限、批末 DOI/标题核对、最新 lessons 优先规则。EBSCO 采用阅读器 CDS fetch，ScienceDirect 采用新 CDN tab fetch；T&F 采用原生直链。加入 Springer、Royal Society、Oxford Academic、AUA 和 Ovid 动作。
+
+```bash
+cd SKILL-v4
+node start.js
+# 在仓库根目录同步当前版（保留本地 downloads 和日志）：
+./sync.sh --apply
+```
+
+同步覆盖已有工具和 Codex 账号安装；旧版只在显式传入 `--include-legacy` 时同步。测试：`cd SKILL-v4 && npm test`。现场结果/局限见 [lessons](SKILL-v4/lessons.md)，完整流程见 [SKILL](SKILL-v4/SKILL.md)。[v4 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0)。
+
+以下版本对照和性能数据为 v3.4 及更早时期的历史说明，不能作为 v4 当前执行策略或新基准。
+
 Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader) by [@baihe26](https://github.com/baihe26) (浙江大学版), re-engineered for Tsinghua University Library, 水木学术搜索, and institutional access pathways.
 
 ## Workflow
@@ -30,7 +47,8 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 ├── SKILL-v3.1/   ← click-first（click-download primary strategy）  — legacy, frozen
 ├── SKILL-v3.2/   ← network-safe（网络安全硬规则 + 事件复盘）       — legacy, frozen
 ├── SKILL-v3.3/   ← strategy-hardcoded（写死策略 + fail-fast 哨兵） — legacy, frozen
-├── SKILL-v3.4/   ← parallel-batch（N tab 并行加载 + 串行下载）     — CANONICAL ✅
+├── SKILL-v3.4/   ← parallel-batch（N tab 并行加载 + 串行下载）     — frozen
+├── SKILL-v4/     ← fixed strategies + 120s + batch reconciliation — CANONICAL
 ├── TEST/          ← 测试清单和实测报告
 ├── sync.sh        ← 同步当前 canonical 版本到各 AI 工具目录
 └── README.md
@@ -46,7 +64,8 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 | v3.1 | `v3.1` | `SKILL-v3.1/` | click-first 策略（5/8 用浏览器原生下载，成功率 7/8） | frozen |
 | v3.2 | `v3.2` | `SKILL-v3.2/` | **网络安全硬规则**（禁止 `0.0.0.0` 绑定 / 代理外泄） | frozen |
 | v3.3 | `v3.3` | `SKILL-v3.3/` | **写死单策略无 fallback + 分组 fail-fast 哨兵 + `strategies.tsv` 清单** | frozen |
-| v3.4 | `v3.4` | `SKILL-v3.4/` | **批内并行：N tab 同时加载文章页（默认 10，会话参数）+ 串行下载保文件归因 + SD 并入并行 + bot 触发自动错峰** | **canonical** |
+| v3.4 | `v3.4` | `SKILL-v3.4/` | 批内并行加载与串行下载 | frozen |
+| v4.0.0 | `v4.0.0` | `SKILL-v4/` | 固定策略实测更新、120秒停止、批末核对、最新 lessons 优先 | **canonical** |
 
 ### v3.2 Changelog（incident-driven）
 
@@ -102,7 +121,7 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 
 ```bash
 # Canonical version (recommended)
-cd SKILL-v3.4 && node start.js
+cd SKILL-v4 && node start.js
 
 # Or any frozen legacy version
 cd SKILL-v3.3 && node start.js
@@ -114,16 +133,17 @@ See each `SKILL-vX/` directory for its own `README.md` and `SKILL.md`.
 
 ```bash
 ./sync.sh          # dry-run preview
-./sync.sh --apply  # actually copy SKILL-v3.4 to default skill paths
+./sync.sh --apply  # copy SKILL-v4 to current skill paths
 ```
 
-`sync.sh` installs `SKILL-v3.4/` (canonical) to the default skill path (e.g. `~/.claude/skills/tsinghua-literature-downloader`). Legacy versions can be synced manually.
+`sync.sh` installs `SKILL-v4/` (canonical) to current skill paths, including existing Codex account installations. Legacy versions are preserved; opt in with `./sync.sh --apply --include-legacy`.
 
 ## GitHub Releases
 
 See [Releases](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases) for tagged versions with changelogs:
 
-- [`v3.4`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.4) — parallel-batch: N tab 并行加载 + 串行下载 (current)
+- [`v4.0.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0) — fixed strategies, bounded attempts, final reconciliation (current)
+- [`v3.4`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.4) — parallel-batch: N tab 并行加载 + 串行下载 (frozen)
 - [`v3.3`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.3) — strategy-hardcoded + fail-fast canary
 - [`v3.2`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.2) — network-safe hard rules
 - [`v3.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.1) — click-first download strategy
