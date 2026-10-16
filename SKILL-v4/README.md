@@ -1,6 +1,8 @@
-# Tsinghua Literature Downloader v4
+# Tsinghua Literature Downloader v4.0.1
 
 通过用户已登录的清华机构访问会话下载 PDF。完整执行要求见 [SKILL.md](SKILL.md)。
+
+每个 session 首次执行前，主动比较本地版本与 [GitHub 最新 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。有新版则报告版本和链接，由用户决定升级；检查失败继续使用本地版，不自动覆盖安装。
 
 - 按数据库分组预热、canary；N 个文章 tab 并行加载，PDF 串行下载。
 - 每库固定策略：已验证 fetch 优先，其次直链，再其次其他动作。

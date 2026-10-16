@@ -1,6 +1,6 @@
 {
   "name": "tsinghua-literature-downloader",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Tsinghua institutional PDFs: fixed strategies, 120-second attempts, batch-final reconciliation",
   "type": "module",
   "scripts": {

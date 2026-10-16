@@ -4,7 +4,7 @@
 
 ## Current: v4
 
-当前维护版为 [SKILL-v4](SKILL-v4/)，版本 `4.0.0`。v3.4 及更早目录保留为历史版。
+当前维护版为 [SKILL-v4](SKILL-v4/)，版本 `4.0.1`。每个 session 首次执行前检查 GitHub 最新 release；有更新则提醒，由用户决定升级，检查失败继续本地版。v3.4 及更早目录保留为历史版。
 
 v4 保留分组预热、canary、并行加载/串行下载；固定策略采用已验证 fetch 优先，其次直链、其他动作。新增累计120秒自动尝试上限、批末 DOI/标题核对、最新 lessons 优先规则。EBSCO 采用阅读器 CDS fetch，ScienceDirect 采用新 CDN tab fetch；T&F 采用原生直链。加入 Springer、Royal Society、Oxford Academic、AUA 和 Ovid 动作。
 
@@ -15,7 +15,7 @@ node start.js
 ./sync.sh --apply
 ```
 
-同步覆盖已有工具和 Codex 账号安装；旧版只在显式传入 `--include-legacy` 时同步。测试：`cd SKILL-v4 && npm test`。现场结果/局限见 [lessons](SKILL-v4/lessons.md)，完整流程见 [SKILL](SKILL-v4/SKILL.md)。[v4 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0)。
+同步覆盖已有工具和 Codex 账号安装；旧版只在显式传入 `--include-legacy` 时同步。测试：`cd SKILL-v4 && npm test`。现场结果/局限见 [lessons](SKILL-v4/lessons.md)，完整流程见 [SKILL](SKILL-v4/SKILL.md)。[最新 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
 
 以下版本对照和性能数据为 v3.4 及更早时期的历史说明，不能作为 v4 当前执行策略或新基准。
 
@@ -65,7 +65,8 @@ Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literatu
 | v3.2 | `v3.2` | `SKILL-v3.2/` | **网络安全硬规则**（禁止 `0.0.0.0` 绑定 / 代理外泄） | frozen |
 | v3.3 | `v3.3` | `SKILL-v3.3/` | **写死单策略无 fallback + 分组 fail-fast 哨兵 + `strategies.tsv` 清单** | frozen |
 | v3.4 | `v3.4` | `SKILL-v3.4/` | 批内并行加载与串行下载 | frozen |
-| v4.0.0 | `v4.0.0` | `SKILL-v4/` | 固定策略实测更新、120秒停止、批末核对、最新 lessons 优先 | **canonical** |
+| v4.0.0 | `v4.0.0` | `SKILL-v4/` | 固定策略实测更新、120秒停止、批末核对、最新 lessons 优先 | previous release |
+| v4.0.1 | `v4.0.1` | `SKILL-v4/` | session 首次执行前检查更新并提醒，由用户决定升级 | **canonical patch** |
 
 ### v3.2 Changelog（incident-driven）
 
@@ -142,7 +143,8 @@ See each `SKILL-vX/` directory for its own `README.md` and `SKILL.md`.
 
 See [Releases](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases) for tagged versions with changelogs:
 
-- [`v4.0.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0) — fixed strategies, bounded attempts, final reconciliation (current)
+- [`v4.0.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.1) — session-start update check and notification (current)
+- [`v4.0.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0) — fixed strategies, bounded attempts, final reconciliation
 - [`v3.4`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.4) — parallel-batch: N tab 并行加载 + 串行下载 (frozen)
 - [`v3.3`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.3) — strategy-hardcoded + fail-fast canary
 - [`v3.2`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.2) — network-safe hard rules

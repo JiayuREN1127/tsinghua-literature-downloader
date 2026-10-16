@@ -3,10 +3,14 @@ name: tsinghua-literature-downloader
 description: Download and organize academic PDFs through the user's logged-in Tsinghua Library, WebVPN, Primo, publisher, or Chrome session. Use for institutional literature downloads, grouped retries, and PDF acquisition checks.
 metadata:
   compatibility: Requires user-authenticated Chrome, remote debugging permission, and Node.js 22+. Uses only user-authorized access.
-  version: "4.0.0"
+  version: "4.0.1"
 ---
 
 # Tsinghua institutional PDF downloads
+
+## Check for updates once per session
+
+Before the first task action in each session, read this file's `metadata.version` and check the latest published release at https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest (or the public GitHub latest-release API). Compare version numbers after removing the release tag's optional `v` prefix. If a newer version exists, tell the user the local version, latest version and release link, and ask whether to upgrade. Do not install or overwrite anything without their decision; continue with the local version if they decline. If the check fails, briefly report that it could not be completed and continue with the local version. Check only once per session, not before every database group or paper. This is a session-start check, not permission to create a watcher or recurring automation.
 
 v4 keeps fixed database strategies, per-group warmup and canaries, parallel article loading, and serial downloads. Successful fetch is preferred over direct-link navigation, then other actions. This priority selects the maintained strategy; it does not authorize indefinite method cycling.
 
