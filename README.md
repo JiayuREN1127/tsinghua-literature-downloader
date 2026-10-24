@@ -1,154 +1,160 @@
 # Tsinghua Literature Downloader
 
-通过已登录的清华图书馆/WebVPN Chrome 会话自动化下载学术 PDF。
+Download academic PDFs through a Chrome session that is already logged in to Tsinghua Library or WebVPN.
 
-## Current: v4.1
+Chinese version: [README_CN.md](README_CN.md)
 
-当前维护版为 [SKILL-v4.1](SKILL-v4.1/)，版本 `4.1.0`。每个 session 首次执行前检查 GitHub 最新 release；有更新则提醒，由用户决定升级，检查失败继续本地版。v4 及更早目录保留为历史版。
+## Current version: v4.1
 
-v4.1 保留分组预热、canary、并行加载/串行下载、累计120秒上限及批末 DOI/标题核对。ScienceDirect 首选实际 PDF 直链，每篇新开 tab；PDF 检查并保存后关闭本篇 tab，失败或等待人工处理的页面保留。EBSCO 等其他数据库策略不变。
+The maintained version is [SKILL-v4.1](SKILL-v4.1/), `4.1.0`. Before the first action in a session it compares its local version with the latest GitHub release. If a newer release exists, it names both versions and links to it, and the user decides whether to upgrade. If the check fails, it says so and continues with the local copy. v4 and earlier stay in the repository as historical snapshots.
 
-```bash
-cd SKILL-v4.1
-node start.js
-# 在仓库根目录同步当前版（保留本地 downloads 和日志）：
-./sync.sh --apply
-```
+v4.1 keeps grouping by database, warmup, and canaries. Article tabs load in parallel and PDFs download one at a time. Each paper gets 120 seconds of cumulative automatic attempts, and the batch ends with a DOI and title check.
 
-同步覆盖已有工具和 Codex 账号安装；旧版只在显式传入 `--include-legacy` 时同步。测试：`cd SKILL-v4.1 && npm test`。现场结果/局限见 [lessons](SKILL-v4.1/lessons.md)，完整流程见 [SKILL](SKILL-v4.1/SKILL.md)。[最新 Release](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
+ScienceDirect follows the article's actual PDF link and opens a separate tab per paper. Once a PDF has downloaded, been checked, and been saved, that paper's tab closes. Tabs that failed or are waiting for a person stay open for diagnosis. Other databases keep their fixed strategies.
 
-以下版本对照和性能数据为 v3.4 及更早时期的历史说明，不能作为 v4 当前执行策略或新基准。
+Tests run with `cd SKILL-v4.1 && npm test`. Field results and limits are in [lessons](SKILL-v4.1/lessons.md), the full procedure in [SKILL](SKILL-v4.1/SKILL.md), and the newest build on the [releases page](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest).
 
-Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader) by [@baihe26](https://github.com/baihe26) (浙江大学版), re-engineered for Tsinghua University Library, 水木学术搜索, and institutional access pathways.
+The version comparisons and performance figures below describe v3.4 and earlier. They are neither v4 execution policy nor a current benchmark.
 
-## Workflow
+Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader) by [@baihe26](https://github.com/baihe26), which targets Zhejiang University. This version was re-engineered for Tsinghua University Library, Shuimu Scholar Search (水木学术搜索), and institutional access paths.
+
+## How it works
 
 ```
-你的 Chrome (已登录清华) ← CDP 代理 ← AI Agent
-         ↓
-  水木学术搜索 / Alma resolver → 出版商页面 → 下载 PDF
-         ↓
-  [FlareSolverr, 可选] → 自动清除 Cloudflare JS Challenge
+Your Chrome (logged in to Tsinghua)  ←  CDP proxy  ←  AI agent
+        ↓
+Shuimu Scholar Search / Alma resolver  →  publisher page  →  PDF download
+        ↓
+[FlareSolverr, optional]  →  clears Cloudflare JS challenges automatically
 ```
 
 ## Prerequisites
 
-- Chrome 浏览器（已登录 水木学术搜索）
-- Chrome 远程调试已启用
-- Node.js 22+
-- FlareSolverr（可选，用于自动清除 Cloudflare）
+- Chrome, logged in to Shuimu Scholar Search
+- Chrome remote debugging enabled
+- Node.js 22 or newer
+- FlareSolverr (optional, for automatic Cloudflare clearance)
 
-## Directory Structure (versions clearly isolated)
+## Directory layout
 
 ```
-├── SKILL-v1/     ← 统一版（unified, per-paper download）           — legacy, frozen
-├── SKILL-v2/     ← 分组版（grouped, per-publisher batch）          — legacy, frozen
-├── SKILL-v3/     ← token-disciplined（probe + action libraries）   — legacy, frozen
-├── SKILL-v3.1/   ← click-first（click-download primary strategy）  — legacy, frozen
-├── SKILL-v3.2/   ← network-safe（网络安全硬规则 + 事件复盘）       — legacy, frozen
-├── SKILL-v3.3/   ← strategy-hardcoded（写死策略 + fail-fast 哨兵） — legacy, frozen
-├── SKILL-v3.4/   ← parallel-batch（N tab 并行加载 + 串行下载）     — frozen
-├── SKILL-v4/     ← fixed strategies + 120s + batch reconciliation — CANONICAL
-├── TEST/          ← 测试清单和实测报告
-├── sync.sh        ← 同步当前 canonical 版本到各 AI 工具目录
-└── README.md
+├── SKILL-v1/     unified, one paper at a time                      legacy, frozen
+├── SKILL-v2/     grouped, batch per publisher                      legacy, frozen
+├── SKILL-v3/     token-disciplined (probe + action libraries)      legacy, frozen
+├── SKILL-v3.1/   click-first (native click download)               legacy, frozen
+├── SKILL-v3.2/   network-safe (hard rules + incident review)       legacy, frozen
+├── SKILL-v3.3/   strategy-hardcoded + fail-fast canary             legacy, frozen
+├── SKILL-v3.4/   parallel batch (N tabs load, serial download)     frozen
+├── SKILL-v4/     fixed strategies, 120 s, batch reconciliation     previous release, frozen
+├── SKILL-v4.1/   ScienceDirect direct links, tab cleanup           canonical
+├── TEST/         test checklists and field reports
+├── sync.sh       installs the canonical version into AI tool skill directories
+├── README.md
+└── README_CN.md
 ```
 
-## Version History
+## Version history
 
-| Version | Tag | Directory | Key Feature | Status |
-|---------|-----|-----------|-------------|--------|
-| v1.0 | `v1.0` | `SKILL-v1/` | 统一版，逐篇独立下载；原始 HTML 进 context（高 token） | frozen |
-| v2.0 | `v2.0` | `SKILL-v2/` | 分组版，按 publisher 批量下载 + FlareSolverr 预热 | frozen |
-| v3.0 | `v3.0` | `SKILL-v3/` | Token Discipline 硬规则 + 探针库（token 降 1000×） | frozen |
-| v3.1 | `v3.1` | `SKILL-v3.1/` | click-first 策略（5/8 用浏览器原生下载，成功率 7/8） | frozen |
-| v3.2 | `v3.2` | `SKILL-v3.2/` | **网络安全硬规则**（禁止 `0.0.0.0` 绑定 / 代理外泄） | frozen |
-| v3.3 | `v3.3` | `SKILL-v3.3/` | **写死单策略无 fallback + 分组 fail-fast 哨兵 + `strategies.tsv` 清单** | frozen |
-| v3.4 | `v3.4` | `SKILL-v3.4/` | 批内并行加载与串行下载 | frozen |
-| v4.0.0 | `v4.0.0` | `SKILL-v4/` | 固定策略实测更新、120秒停止、批末核对、最新 lessons 优先 | previous release |
-| v4.0.1 | `v4.0.1` | `SKILL-v4/` | session 首次执行前检查更新并提醒，由用户决定升级 | **canonical patch** |
+| Version | Tag | Directory | Key feature | Status |
+|---|---|---|---|---|
+| v4.1.0 | `v4.1.0` | `SKILL-v4.1/` | ScienceDirect direct PDF links, one tab per paper, tab cleanup after saving | **canonical** |
+| v4.0.1 | `v4.0.1` | `SKILL-v4/` | Checks for a newer release once per session and asks before upgrading | superseded |
+| v4.0.0 | `v4.0.0` | `SKILL-v4/` | Live-tested fixed strategies, 120-second cap, end-of-batch reconciliation, newest lessons win | superseded |
+| v3.4 | `v3.4` | `SKILL-v3.4/` | Parallel loading inside a batch, serial download | frozen |
+| v3.3 | `v3.3` | `SKILL-v3.3/` | One hard-coded strategy per database, grouped fail-fast canary, `strategies.tsv` | frozen |
+| v3.2 | `v3.2` | `SKILL-v3.2/` | Network security hard rules (no `0.0.0.0` bind, no proxy relay) | frozen |
+| v3.1 | `v3.1` | `SKILL-v3.1/` | Click-first (browser-native download for 5 of 8 papers, 7 of 8 succeeded) | frozen |
+| v3.0 | `v3.0` | `SKILL-v3/` | Token discipline hard rules plus a probe library (1000× fewer tokens) | frozen |
+| v2.0 | `v2.0` | `SKILL-v2/` | Grouped download by publisher, plus FlareSolverr warmup | frozen |
+| v1.0 | `v1.0` | `SKILL-v1/` | Unified, one paper at a time; raw HTML went into context, high token cost | frozen |
 
-### v3.2 Changelog（incident-driven）
+## Changelogs
 
-**2026-07-26 安全事件**：v3.1 运行时，AI agent 为让 Docker 容器访问本地 Clash 代理，自行执行 `socat TCP-LISTEN:17897,bind=0.0.0.0 TCP:127.0.0.1:7897`，将代理暴露到整个校园网，触发学校"私设代理"安全告警。
+### v3.2: the security incident
 
-**v3.2 修复**：在 `SKILL.md` 中新增 **Network Security Guardrails** 硬规则段（5 条规则），禁止任何 `0.0.0.0` 绑定与代理外转。FlareSolverr 安装澄清为：Docker 是推荐的跨架构路径（含 Apple Silicon），但端口映射必须 `-p 127.0.0.1:8191:8191`（上游 README 的裸 `-p 8191:8191` 默认 `0.0.0.0`，本 skill 禁用）；容器联网问题用 `host.docker.internal` / `--dns` 解决，绝不走 `socat` `0.0.0.0` 桥接。规则全部使用占位符（`<proxy-port>`、`<resolver>`、`host.docker.internal`），不写死任何 IP/端口，便于合作者复用。
+On 26 July 2026, while v3.1 was running, the agent decided on its own to run `socat TCP-LISTEN:17897,bind=0.0.0.0 TCP:127.0.0.1:7897` so a Docker container could reach the local Clash proxy. That exposed the proxy to the whole campus network, and the university issued a security alert for running an unauthorized proxy.
 
-### v3.3 Changelog（strategy-hardcoded）
+The fix landed in `SKILL.md`: a Network Security Guardrails section with five hard rules that forbid any `0.0.0.0` bind and any proxy relay to the outside. The FlareSolverr instructions now say Docker is the recommended cross-platform route (Apple Silicon included), but the port mapping must be `-p 127.0.0.1:8191:8191`. The upstream README's bare `-p 8191:8191` binds `0.0.0.0` by default, and this skill does not allow it. Container networking is solved with `host.docker.internal` or `--dns`, never with a `socat` bridge on `0.0.0.0`. The rules use placeholders (`<proxy-port>`, `<resolver>`, `host.docker.internal`) and hard-code no IP or port, so other users can reuse them.
 
-**动机**：v3.2 的 click-first + fetch fallback 在策略失效时浪费 token 反复试错。同一数据库的 PDF 获取与用户验证逻辑几乎不变，完全可以写死。
+### v3.3: fixed strategies
 
-**v3.3 改进**：
-- 每库写死**单一**下载策略（fetch / click-download / navigate-download / click-human-assisted），**无 click↔fetch fallback**。策略坏了由 agent 现场改 action 文件 + 标 `updated_at`，不静默换方法。
-- 新增 **fail-fast 哨兵**：每库列表第一篇必须走通策略；走不通即**整库中断**交用户决策（附 失败类型 + 哪篇 + 建议修哪行），不浪费 token 批量试错。
-- **分组下载成为正典流程**（不再是可选项）：列表 → 按库分类（`journal_database_mapping.md`）→ 逐库预热 → 哨兵 → 批量。
-- 新增 `strategies.tsv` 清单统一管理策略新鲜度（库 / 子类型 / 策略 / `last_tested` / `updated_at`）。
-- per-publisher 访问特性（CAPTCHA / 镜像 / 最稳源）内联进 `SKILL.md` 策略段，不再放 side file。
-- **SAGE 写死 `cnpereading.com` 国内镜像**（不用 `journals.sagepub.com`）。
-- 继承 v3.2 网络安全硬规则、v3 token 纪律探针库、FlareSolverr（安全绑定）。
+v3.2 fell back between click-first and fetch. When a strategy broke, the agent burned tokens trying both. The download path and the user verification step for a given database barely change, so they can be written down once.
 
-### v3.4 Changelog（parallel-batch）
+The changes:
 
-**动机**：v3.3 的 Stage D 复用单个认证 tab 逐篇串行导航 + 下载，页面渲染等待（8–12s/篇）是主要耗时，无法利用浏览器并行加载能力。
+- Each database gets one fixed download method (fetch, click-download, navigate-download, click with manual help) and no click/fetch fallback. If a method breaks, the agent edits the action file on the spot and sets `updated_at`; it does not silently switch.
+- A fail-fast canary: the first paper from each database must pass the fixed method. If it does not, the whole database group stops and goes back to the user with the failure type, the paper, and the line to fix. No batch trial and error.
+- Grouped download became the standard flow: list, classify by database (`journal_database_mapping.md`), warm up each database, run the canary, then batch.
+- A `strategies.tsv` manifest tracks strategy freshness: database, subtype, strategy, `last_tested`, `updated_at`.
+- Per-publisher access quirks (CAPTCHA, mirrors, the most reliable source) moved inline into the strategy section of `SKILL.md` instead of a side file.
+- SAGE is hard-coded to the domestic `cnpereading.com` mirror, not `journals.sagepub.com`.
+- v3.2's network guardrails, v3's probe library and token discipline, and the safely bound FlareSolverr all carry over.
 
-**v3.4 改进**：
-- **并行加载 + 串行下载**：canary 通过后，每批同时开 `N` 个 tab（默认 10，会话参数，Stage D 前问用户一次可改），各 navigate 到一篇文献的文章页并行加载；下载阶段逐个 tab 串行（点下载 → `mv` → verify → log），`ls -t ~/Downloads | head -1` 文件归因保持可靠。
-- **SD 并入并行批次**：ScienceDirect 的 tab 并行打开，CAPTCHA 人工逐个解（串行下载原则不变）。
-- **bot 触发自动错峰**：同出版商批次出现 ≥2 个 bot 挑战时，自动降为每 1–2s 错峰开 tab，并在总结报告标注。
-- **tab 生命周期**：批批新开、批后即关；认证 tab 留作 CAS 锚点全程不关。
-- **canary 保持串行**：策略验证与选择器缓存仍在认证 tab 上单篇完成。
-- 继承 v3.3 全部：写死单策略 + fail-fast 哨兵、`strategies.tsv`、`journal_database_mapping.md` 分类器、v3.2 网络安全硬规则、v3 token 纪律。
+### v3.4: parallel batch
 
-### 下载策略对比（v3.4 当前 · 四种策略）
+Stage D in v3.3 reused a single authenticated tab and navigated paper by paper. Page rendering took 8 to 12 seconds per paper while the browser's parallel loading sat idle.
 
-| 维度          | fetch()                                                                     | click-download                                  | navigate-download                                          | click-human-assisted                     |
-| ----------- | --------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------- |
-| Agent token | 最省 — 1 次 `get-pdf.mjs` 调用，分块在 Node 内完成，agent 只看结果                           | 稍多 — 找按钮 + 点击 + 检查 `~/Downloads` + mv，3-4 次紧凑交互 | 较省 — 1 次 CDP `/navigate` 到 pdfdirect URL + 检查 + mv，2-3 次交互 | 最多 — 需等人工解 CAPTCHA，agent 反复检查页面状态 + 多次交互 |
-| 下载速度        | 慢 — `fetch`→arrayBuffer→chunk 逐个 CDP round-trip（4MB ≈ 10-30s）               | 快 — 浏览器原生流式直写磁盘（4MB ≈ 2-5s）                     | 快 — 导航触发原生下载直写磁盘（4MB ≈ 2-5s）                               | 受限于人工 — CAPTCHA 解后 click 原生下载快，但等人是瓶颈    |
-| 支持数据库       | SAGE、T&F、Annual Reviews、IEEE、Wiley-OA（4 库 / 10）                             | JSTOR、ProQuest、EBSCO、Nature（4 库 / 10）           | Wiley-订阅（1 库 / 10）                                         | ScienceDirect（1 库 / 10）                  |
-| 失败成本        | v3.3 写死后低 — 仅用于确实返回 `application/pdf` 的库；误用则高（T&C / Cloudflare / viewer 拦截） | 低 — 模拟人类操作，首次即成功，无诊断开销                          | 低 — 浏览器处理 cookie / Cloudflare，导航即下载                        | 中 — CAPTCHA 无法自动化，但解后 click 可靠           |
-### v1 → v2 → v3 → v3.1 → v3.2 → v3.3 → v3.4 版本演进
+The changes:
 
-| 维度    | v1（原始）                              | v2（+FlareSolverr）         | v3（token-disciplined）         | v3.1（click-first）              | v3.2（network-safe）             | v3.3（strategy-hardcoded）                                                             | v3.4（parallel-batch）                                                                       |
-| ----- | ----------------------------------- | ------------------------- | ----------------------------- | ------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| 页面读取  | 原始 innerHTML/innerText（100-500KB/页） | 同 v1                      | 探针 ~200B/次，DOM 服务端过滤          | 同 v3                           | 同 v3                           | 同 v3，探针优化                                                                            | 同 v3，探针优化                                                                               |
-| Token | ~250K                               | ~200K                     | ~150                          | ~300                           | ~300                           | ~300（哨兵首篇验证后批量无 re-probe，批量均摊更省）                                                     | 同 v3.3（并行批次不引入 re-probe；无 re-probe 原则不变）                                              |
-| 下载方式  | 全部 fetch() 分块                       | 全部 fetch() 分块             | 全部 fetch() 分块                 | 5/8 click + 2/8 fetch + 1/8 人工 | 同 v3.1                         | **写死单策略无 fallback**：<br>4 库 fetch + 4 库 click-download + 1 库 navigate + 1 库 click-人工 | 同 v3.3（策略不变，仅编排并行化：N tab 并行加载文章页 + 串行下载）                                  |
-| 下载速度  | 慢（分块，4MB ≈ 20s）                     | 慢（同 v1）                   | 慢（同 v1）                       | 快（click 原生流，4MB ≈ 3s）          | 同 v3.1                         | 同 v3.1（多数走原生；仅 fetch 库分块）                                                            | 更快（页面渲染 8–12s/篇并行化；串行下载阶段同 v3.3）                                                  |
-| 成功率   | 2/8                                 | 3/8（+Wiley）               | 2/8（探针改善诊断，fetch 仍 6/8 失败）    | 7/8                            | 7/8                            | 待实测（目标 ≥ 7/8，哨兵消除批量浪费）                                                               | 待实测（目标 ≥ 7/8，不影响策略成功率）                                                                |
-| 核心改进  | —                                   | FlareSolverr 解 Cloudflare | 探针库 + Token 纪律（token 降 1000×） | click-first（2/8→7/8，速度 3-10×）  | 网络安全硬规则（禁 `0.0.0.0` 绑定 / 代理外泄） | 写死单策略 + 分组 fail-fast 哨兵 + `strategies.tsv` 清单                                        | 批内 N tab 并行加载（默认 10 会话参数）+ 串行下载保归因 + SD 并入并行 + bot 触发自动错峰          |
+- Parallel loading, serial downloads. Once the canary passes, a batch opens N tabs at once (default 10, set once per session before Stage D), each navigating to one article page. Downloads then run one tab at a time: click, `mv`, verify, log. `ls -t ~/Downloads | head -1` stays a reliable way to attribute a file.
+- ScienceDirect joins the batch. Its tabs open in parallel and CAPTCHAs are solved one by one; downloads stay serial.
+- Bot-triggered staggering. When two or more tabs in a publisher batch hit a bot challenge, later tabs open 1 to 2 seconds apart, and the summary says so.
+- Tab lifetime. Tabs are opened per batch and closed after it. The authenticated tab stays open as the CAS anchor.
+- The canary stays serial: strategy checks and selector caching still happen on one paper in the authenticated tab.
+- Everything from v3.3 carries over: one fixed strategy per database with the fail-fast canary, `strategies.tsv`, the `journal_database_mapping.md` classifier, v3.2 guardrails, and v3 token discipline.
 
-## Quick Start
+### Download strategies (v3.4, historical)
+
+| | fetch() | click-download | navigate-download | click with manual help |
+|---|---|---|---|---|
+| Agent tokens | Lowest: one `get-pdf.mjs` call, chunking happens inside Node, the agent sees only the result | Slightly higher: find the button, click, check `~/Downloads`, `mv`; 3 to 4 compact interactions | Low: one CDP `/navigate` to the pdfdirect URL, then check and `mv`; 2 to 3 interactions | Highest: waits for a person to solve the CAPTCHA while the agent keeps polling page state |
+| Download speed | Slow: fetch to arrayBuffer, then one CDP round trip per chunk (4 MB ≈ 10 to 30 s) | Fast: the browser streams straight to disk (4 MB ≈ 2 to 5 s) | Fast: navigation triggers a native download (4 MB ≈ 2 to 5 s) | Human-bound: the native click is fast once the CAPTCHA is solved, but waiting dominates |
+| Databases | SAGE, T&F, Annual Reviews, IEEE, Wiley-OA (4 of 10) | JSTOR, ProQuest, EBSCO, Nature (4 of 10) | Wiley subscription (1 of 10) | ScienceDirect (1 of 10) |
+| Failure cost | Low, because v3.3 hard-coded it: used only where the response really is `application/pdf`. High if misapplied (terms of service, Cloudflare, viewer interception) | Low: behaves like a person, works on the first try, no diagnosis overhead | Low: the browser handles cookies and Cloudflare, navigation is the download | Medium: the CAPTCHA cannot be automated, but the click is reliable afterwards |
+
+### Version evolution (v1 to v3.4)
+
+| | v1 (original) | v2 (+FlareSolverr) | v3 (token-disciplined) | v3.1 (click-first) | v3.2 (network-safe) | v3.3 (strategy-hardcoded) | v3.4 (parallel batch) |
+|---|---|---|---|---|---|---|---|
+| Page reading | Raw innerHTML/innerText (100 to 500 KB per page) | Same as v1 | Probe returns about 200 B; the DOM is filtered server-side | Same as v3 | Same as v3 | Same as v3, with probe refinements | Same as v3, with probe refinements |
+| Tokens | ~250K | ~200K | ~150 | ~300 | ~300 | ~300 (after the canary no paper is re-probed, which lowers the average further) | Same as v3.3: parallel batches add no re-probe |
+| Download method | All fetch(), chunked | All fetch(), chunked | All fetch(), chunked | 5/8 click, 2/8 fetch, 1/8 manual | Same as v3.1 | One fixed strategy per database, no fallback: 4 databases fetch, 4 click-download, 1 navigate, 1 click with manual help | Same as v3.3; only the orchestration is parallel: N tabs load article pages, downloads stay serial |
+| Download speed | Slow (chunked, 4 MB ≈ 20 s) | Slow (same as v1) | Slow (same as v1) | Fast (native click stream, 4 MB ≈ 3 s) | Same as v3.1 | Same as v3.1: native for most databases, chunked only for fetch | Faster: the 8 to 12 seconds of page rendering per paper now overlaps; the download stage matches v3.3 |
+| Success rate | 2/8 | 3/8 (+Wiley) | 2/8 (probes improved diagnosis; fetch still failed 6/8) | 7/8 | 7/8 | Awaiting live test (target ≥ 7/8); the canary removes wasted batches | Awaiting live test (target ≥ 7/8); strategy success is unchanged |
+| Core improvement | n/a | FlareSolverr clears Cloudflare | Probe library and token discipline (1000× fewer tokens) | click-first (2/8 to 7/8, 3 to 10× faster) | Network security hard rules (no `0.0.0.0` bind, no proxy relay) | One hard-coded strategy per database, grouped fail-fast canary, `strategies.tsv` | N tabs load in parallel (default 10, a session parameter), serial download keeps file attribution, ScienceDirect joins the batch, automatic stagger when bots appear |
+
+## Quick start
 
 ```bash
-# Canonical version (recommended)
-cd SKILL-v4 && node start.js
+# Current version
+cd SKILL-v4.1 && node start.js
 
-# Or any frozen legacy version
-cd SKILL-v3.3 && node start.js
+# Any frozen version starts the same way
+cd SKILL-v3.4 && node start.js
 ```
 
-See each `SKILL-vX/` directory for its own `README.md` and `SKILL.md`.
+Each `SKILL-vX/` directory has its own README.md and SKILL.md.
 
-## Sync to AI Tools
+## Sync to AI tools
 
 ```bash
-./sync.sh          # dry-run preview
-./sync.sh --apply  # copy SKILL-v4 to current skill paths
+./sync.sh          # dry run
+./sync.sh --apply  # copy SKILL-v4.1 into the current skill paths
 ```
 
-`sync.sh` installs `SKILL-v4/` (canonical) to current skill paths, including existing Codex account installations. Legacy versions are preserved; opt in with `./sync.sh --apply --include-legacy`.
+`sync.sh` installs the canonical version into existing skill directories, including Codex account installs. Legacy versions are left alone unless you pass `--include-legacy`.
 
-## GitHub Releases
+## Releases
 
-See [Releases](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases) for tagged versions with changelogs:
+Tagged versions with changelogs live under [Releases](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases):
 
-- [`v4.0.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.1) — session-start update check and notification (current)
-- [`v4.0.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0) — fixed strategies, bounded attempts, final reconciliation
-- [`v3.4`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.4) — parallel-batch: N tab 并行加载 + 串行下载 (frozen)
-- [`v3.3`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.3) — strategy-hardcoded + fail-fast canary
-- [`v3.2`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.2) — network-safe hard rules
-- [`v3.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.1) — click-first download strategy
-- [`v3.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.0) — token-disciplined probe/action libraries
-- [`v2.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v2.0) — grouped download + FlareSolverr warmup
-- [`v1.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v1.0) — original unified skill
+- [`v4.1.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.1.0): ScienceDirect direct links, per-paper tab cleanup (current)
+- [`v4.0.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.1): session-start update check and notification
+- [`v4.0.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v4.0.0): fixed strategies, bounded attempts, final reconciliation
+- [`v3.4`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.4): parallel loading plus serial download (frozen)
+- [`v3.3`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.3): hard-coded strategies and the fail-fast canary
+- [`v3.2`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.2): network security hard rules
+- [`v3.1`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.1): click-first download strategy
+- [`v3.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v3.0): token-disciplined probe and action libraries
+- [`v2.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v2.0): grouped download and FlareSolverr warmup
+- [`v1.0`](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/tag/v1.0): the original unified skill
