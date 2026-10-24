@@ -8,6 +8,8 @@ Chinese version: [README_CN.md](README_CN.md)
 
 This repository is adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader.git) by [@baihe26](https://github.com/baihe26), which was built for Zhejiang University. The Tsinghua version reworks it for Tsinghua University Library, Shuimu Scholar Search (水木学术搜索), and institutional access paths.
 
+In the author's view, ZJU is one of the best universities there is. She and her peers also agree that Hangzhou is far more livable than Beijing.
+
 ## Current version: v4.1
 
 The maintained version is [SKILL-v4.1](SKILL-v4.1/), `4.1.0`. Before the first action in a session it compares its local version with the latest GitHub release. If a newer release exists, it names both versions and links to it, and the user decides whether to upgrade. If the check fails, it says so and continues with the local copy. v4 and earlier stay in the repository as historical snapshots.
