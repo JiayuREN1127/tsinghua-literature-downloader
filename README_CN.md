@@ -4,6 +4,10 @@
 
 英文版：[README.md](README.md)
 
+## 来源
+
+本仓库改编自 [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader.git)（[@baihe26](https://github.com/baihe26) 的浙江大学版）。清华版在此基础上重写，面向清华大学图书馆、水木学术搜索和机构访问路径。
+
 ## 当前版本 v4.1
 
 维护中的版本是 [SKILL-v4.1](SKILL-v4.1/)，版本号 `4.1.0`。每次 session 的第一次操作前，它会拿本地版本和 GitHub 最新 release 比一次；有新版本就报出两边版本号和链接，升不升级由用户决定。检查失败就说明情况，继续用本地版。v4 及更早的目录留在仓库里，作历史存档。
@@ -15,8 +19,6 @@ ScienceDirect 走文章里实际的 PDF 链接，每篇单独开一个 tab。PDF
 测试用 `cd SKILL-v4.1 && npm test`。现场结果和已知局限见 [lessons](SKILL-v4.1/lessons.md)，完整流程见 [SKILL](SKILL-v4.1/SKILL.md)，最新构建在 [releases 页面](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
 
 下面的版本对照和性能数据讲的是 v3.4 及更早的版本，不是 v4 的执行策略，也不是现在的基准。
-
-改编自 [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader)（[@baihe26](https://github.com/baihe26) 的浙江大学版），针对清华大学图书馆、水木学术搜索和机构访问路径重写。
 
 ## 工作方式
 

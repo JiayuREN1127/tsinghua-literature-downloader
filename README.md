@@ -4,6 +4,10 @@ Download academic PDFs through a Chrome session that is already logged in to Tsi
 
 Chinese version: [README_CN.md](README_CN.md)
 
+## Origin
+
+This repository is adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader.git) by [@baihe26](https://github.com/baihe26), which was built for Zhejiang University. The Tsinghua version reworks it for Tsinghua University Library, Shuimu Scholar Search (水木学术搜索), and institutional access paths.
+
 ## Current version: v4.1
 
 The maintained version is [SKILL-v4.1](SKILL-v4.1/), `4.1.0`. Before the first action in a session it compares its local version with the latest GitHub release. If a newer release exists, it names both versions and links to it, and the user decides whether to upgrade. If the check fails, it says so and continues with the local copy. v4 and earlier stay in the repository as historical snapshots.
@@ -15,8 +19,6 @@ ScienceDirect follows the article's actual PDF link and opens a separate tab per
 Tests run with `cd SKILL-v4.1 && npm test`. Field results and limits are in [lessons](SKILL-v4.1/lessons.md), the full procedure in [SKILL](SKILL-v4.1/SKILL.md), and the newest build on the [releases page](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest).
 
 The version comparisons and performance figures below describe v3.4 and earlier. They are neither v4 execution policy nor a current benchmark.
-
-Adapted from [zju-literature-downloader](https://github.com/baihe26/zju-literature-downloader) by [@baihe26](https://github.com/baihe26), which targets Zhejiang University. This version was re-engineered for Tsinghua University Library, Shuimu Scholar Search (水木学术搜索), and institutional access paths.
 
 ## How it works
 
