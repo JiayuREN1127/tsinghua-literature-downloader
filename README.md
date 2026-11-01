@@ -10,15 +10,15 @@ This repository is adapted from [zju-literature-downloader](https://github.com/b
 
 In the author's view, ZJU is one of the best universities there is. She and her peers also agree that Hangzhou is far more livable than Beijing.
 
-## Current version: v4.1
+## Current version: v4.2
 
-The maintained version is [SKILL-v4.1](SKILL-v4.1/), `4.1.0`. Before the first action in a session it compares its local version with the latest GitHub release. If a newer release exists, it names both versions and links to it, and the user decides whether to upgrade. If the check fails, it says so and continues with the local copy. v4 and earlier stay in the repository as historical snapshots.
+The maintained version is [SKILL-v4.2](SKILL-v4.2/), `4.2.0`. Before the first action in a session it compares its local version with the latest GitHub release. If a newer release exists, it names both versions and links to it, and the user decides whether to upgrade. If the check fails, it says so and continues with the local copy. v4.1 and earlier stay in the repository as historical snapshots.
 
-v4.1 keeps grouping by database, warmup, and canaries. Article tabs load in parallel and PDFs download one at a time. Each paper gets 120 seconds of cumulative automatic attempts, and the batch ends with a DOI and title check.
+v4.2 makes warmup a **mandatory gate**: no batch article opens until warmup and canary both pass, and the agent reports `warmup passed` with the authentication tab id first. It adds an optional all-databases pre-flight mode and a session-discipline section that enforces hard-gate phrasing, a per-session checklist, and strict token economy (compact evals, on-demand resource reads, one-line logs) so the agent keeps following the skill through long runs. Grouping by database, parallel tab loading, serial downloads, 120 seconds of cumulative automatic attempts per paper, and the end-of-batch DOI/title check all carry over from v4.1.
 
 ScienceDirect follows the article's actual PDF link and opens a separate tab per paper. Once a PDF has downloaded, been checked, and been saved, that paper's tab closes. Tabs that failed or are waiting for a person stay open for diagnosis. Other databases keep their fixed strategies.
 
-Tests run with `cd SKILL-v4.1 && npm test`. Field results and limits are in [lessons](SKILL-v4.1/lessons.md), the full procedure in [SKILL](SKILL-v4.1/SKILL.md), and the newest build on the [releases page](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest).
+Tests run with `cd SKILL-v4.2 && npm test`. Field results and limits are in [lessons](SKILL-v4.2/lessons.md), the full procedure in [SKILL](SKILL-v4.2/SKILL.md), and the newest build on the [releases page](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest).
 
 The version comparisons and performance figures below describe v3.4 and earlier. They are neither v4 execution policy nor a current benchmark.
 
@@ -50,7 +50,8 @@ Shuimu Scholar Search / Alma resolver  →  publisher page  →  PDF download
 ├── SKILL-v3.3/   strategy-hardcoded + fail-fast canary             legacy, frozen
 ├── SKILL-v3.4/   parallel batch (N tabs load, serial download)     frozen
 ├── SKILL-v4/     fixed strategies, 120 s, batch reconciliation     previous release, frozen
-├── SKILL-v4.1/   ScienceDirect direct links, tab cleanup           canonical
+├── SKILL-v4.1/   ScienceDirect direct links, tab cleanup           previous release, frozen
+├── SKILL-v4.2/   mandatory warmup gate + session discipline        canonical
 ├── TEST/         test checklists and field reports
 ├── sync.sh       installs the canonical version into AI tool skill directories
 ├── README.md
@@ -61,7 +62,8 @@ Shuimu Scholar Search / Alma resolver  →  publisher page  →  PDF download
 
 | Version | Tag | Directory | Key feature | Status |
 |---|---|---|---|---|
-| v4.1.0 | `v4.1.0` | `SKILL-v4.1/` | ScienceDirect direct PDF links, one tab per paper, tab cleanup after saving | **canonical** |
+| v4.2.0 | `v4.2.0` | `SKILL-v4.2/` | Mandatory warmup gate (batch waits for warmup + canary), optional all-databases pre-flight, session-discipline section (hard gates, checklist, token economy) | **canonical** |
+| v4.1.0 | `v4.1.0` | `SKILL-v4.1/` | ScienceDirect direct PDF links, one tab per paper, tab cleanup after saving | superseded |
 | v4.0.1 | `v4.0.1` | `SKILL-v4/` | Checks for a newer release once per session and asks before upgrading | superseded |
 | v4.0.0 | `v4.0.0` | `SKILL-v4/` | Live-tested fixed strategies, 120-second cap, end-of-batch reconciliation, newest lessons win | superseded |
 | v3.4 | `v3.4` | `SKILL-v3.4/` | Parallel loading inside a batch, serial download | frozen |
@@ -131,7 +133,7 @@ The changes:
 
 ```bash
 # Current version
-cd SKILL-v4.1 && node start.js
+cd SKILL-v4.2 && node start.js
 
 # Any frozen version starts the same way
 cd SKILL-v3.4 && node start.js
@@ -143,7 +145,7 @@ Each `SKILL-vX/` directory has its own README.md and SKILL.md.
 
 ```bash
 ./sync.sh          # dry run
-./sync.sh --apply  # copy SKILL-v4.1 into the current skill paths
+./sync.sh --apply  # copy SKILL-v4.2 into the current skill paths
 ```
 
 `sync.sh` installs the canonical version into existing skill directories, including Codex account installs. Legacy versions are left alone unless you pass `--include-legacy`.

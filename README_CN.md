@@ -10,15 +10,15 @@
 
 在作者看来，ZJU 是最好的大学之一。她和同行们也一致认为，杭州比北京宜居得多。
 
-## 当前版本 v4.1
+## 当前版本 v4.2
 
-维护中的版本是 [SKILL-v4.1](SKILL-v4.1/)，版本号 `4.1.0`。每次 session 的第一次操作前，它会拿本地版本和 GitHub 最新 release 比一次；有新版本就报出两边版本号和链接，升不升级由用户决定。检查失败就说明情况，继续用本地版。v4 及更早的目录留在仓库里，作历史存档。
+维护中的版本是 [SKILL-v4.2](SKILL-v4.2/)，版本号 `4.2.0`。每次 session 的第一次操作前，它会拿本地版本和 GitHub 最新 release 比一次；有新版本就报出两边版本号和链接，升不升级由用户决定。检查失败就说明情况，继续用本地版。v4.1 及更早的目录留在仓库里，作历史存档。
 
-v4.1 保留按数据库分组、预热和 canary 的做法。文章 tab 并行打开，PDF 逐篇下载。每篇文献的自动尝试累计 120 秒，批次结束后统一核对 DOI 和标题。
+v4.2 把预热改成**强制关卡**：warmup 和 canary 都通过之前，不打开任何批量文章 tab，agent 需要先报告 `warmup passed` 并给出认证 tab id。它新增了可选的「全部数据库先统一预热」pre-flight 模式，以及一段会话纪律（session discipline）：硬关卡措辞、每会话复述检查清单、严格的 token 纪律（紧凑 eval、按需读文件、逐篇一行日志），让 agent 在长任务里始终遵守规则。v4.1 的按库分组、并行开 tab、串行下载、每篇 120 秒累计自动尝试、批末核对 DOI/标题都保留。
 
 ScienceDirect 走文章里实际的 PDF 链接，每篇单独开一个 tab。PDF 下载完、检查过、存好之后，这一篇的 tab 关闭；失败或等人处理的 tab 留着排查。其他数据库沿用各自的固定策略。
 
-测试用 `cd SKILL-v4.1 && npm test`。现场结果和已知局限见 [lessons](SKILL-v4.1/lessons.md)，完整流程见 [SKILL](SKILL-v4.1/SKILL.md)，最新构建在 [releases 页面](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
+测试用 `cd SKILL-v4.2 && npm test`。现场结果和已知局限见 [lessons](SKILL-v4.2/lessons.md)，完整流程见 [SKILL](SKILL-v4.2/SKILL.md)，最新构建在 [releases 页面](https://github.com/JiayuREN1127/tsinghua-literature-downloader/releases/latest)。
 
 下面的版本对照和性能数据讲的是 v3.4 及更早的版本，不是 v4 的执行策略，也不是现在的基准。
 
@@ -50,7 +50,8 @@ ScienceDirect 走文章里实际的 PDF 链接，每篇单独开一个 tab。PDF
 ├── SKILL-v3.3/  策略写死加 fail-fast 哨兵                  历史版，冻结
 ├── SKILL-v3.4/  并行批次（N 个 tab 加载，串行下载）        冻结
 ├── SKILL-v4/    固定策略、120 秒、批末核对                 上一版，冻结
-├── SKILL-v4.1/  ScienceDirect 直链，逐篇关 tab             当前版
+├── SKILL-v4.1/  ScienceDirect 直链，逐篇关 tab             上一版，冻结
+├── SKILL-v4.2/  强制预热关卡 + 会话纪律                    当前版
 ├── TEST/        测试清单和实测报告
 ├── sync.sh      把当前版同步到各 AI 工具的 skill 目录
 ├── README.md
@@ -61,7 +62,8 @@ ScienceDirect 走文章里实际的 PDF 链接，每篇单独开一个 tab。PDF
 
 | 版本 | Tag | 目录 | 主要变化 | 状态 |
 |---|---|---|---|---|
-| v4.1.0 | `v4.1.0` | `SKILL-v4.1/` | ScienceDirect 走 PDF 直链，每篇一个 tab，存好后关闭 | **当前版** |
+| v4.2.0 | `v4.2.0` | `SKILL-v4.2/` | 强制预热关卡（warmup + canary 都通过才开批量），可选全库 pre-flight，会话纪律段（硬关卡、检查清单、token 纪律） | **当前版** |
+| v4.1.0 | `v4.1.0` | `SKILL-v4.1/` | ScienceDirect 走 PDF 直链，每篇一个 tab，存好后关闭 | 上一版 |
 | v4.0.1 | `v4.0.1` | `SKILL-v4/` | 每次 session 开始检查新版本，升级前先问用户 | 上一版 |
 | v4.0.0 | `v4.0.0` | `SKILL-v4/` | 固定策略按实测更新，120 秒上限，批末核对，同范围以较新的 lesson 为准 | 上一版 |
 | v3.4 | `v3.4` | `SKILL-v3.4/` | 批内并行加载，串行下载 | 冻结 |
@@ -131,7 +133,7 @@ ScienceDirect 走文章里实际的 PDF 链接，每篇单独开一个 tab。PDF
 
 ```bash
 # 当前版
-cd SKILL-v4.1 && node start.js
+cd SKILL-v4.2 && node start.js
 
 # 任何冻结版也这样启动
 cd SKILL-v3.4 && node start.js
